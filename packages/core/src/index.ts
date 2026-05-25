@@ -4,6 +4,7 @@ export { Storage } from './storage.js';
 export { AstParser } from './ast-parser.js';
 export { ConventionDetector } from './convention-detector.js';
 export { PythonParser, GoParser, RustParser } from './multi-language-parser.js';
+export type { TreeSitterPythonParser, TreeSitterGoParser, TreeSitterRustParser } from './tree-sitter-parser.js';
 export { ArchitectureAnalyzer } from './architecture-analyzer.js';
 export { KnowledgeGraph } from './knowledge-graph.js';
 export type { GraphNode, GraphEdge, GraphCluster } from './knowledge-graph.js';

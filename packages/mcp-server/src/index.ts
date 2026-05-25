@@ -242,7 +242,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'index_repo': {
-      const progress = bridge.index();
+      const progress = await bridge.index();
       return {
         content: [
           {

@@ -32,6 +32,53 @@ function cbJson(args: string): any {
 }
 
 describe('CLI Integration', () => {
+  describe('cb init', () => {
+    it('indexes the repository and shows stats', () => {
+      const output = cb('init');
+      expect(output).toContain('files found');
+      expect(output).toContain('Stats:');
+    });
+
+    it('supports --tree-sitter flag', () => {
+      const output = cb('init --tree-sitter');
+      expect(output).toContain('files found');
+    });
+
+    it('--watch flag does not crash (spawns and terminates)', () => {
+      // --watch keeps the process alive, so we spawn it and kill after a short delay
+      const proc = spawn('node', [CLI, 'init', '--watch'], {
+        cwd: PROJECT_ROOT,
+        stdio: 'pipe',
+      });
+      let output = '';
+      proc.stdout?.on('data', (d: Buffer) => { output += d.toString(); });
+      proc.stderr?.on('data', (d: Buffer) => { output += d.toString(); });
+      // Wait for the watch message, then kill
+      return new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          proc.kill('SIGTERM');
+          setTimeout(() => {
+            try {
+              expect(output).toContain('Watching for file changes');
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          }, 500);
+        }, 10_000);
+        proc.on('exit', () => {
+          clearTimeout(timeout);
+          try {
+            expect(output).toContain('Watching for file changes');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+    }, 15_000);
+  });
+
   describe('cb conventions', () => {
     it('returns conventions report', () => {
       const output = cb('conventions');

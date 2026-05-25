@@ -1,14 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import chokidar, { type FSWatcher } from 'chokidar';
 import { AstParser } from './ast-parser.js';
 import { PythonParser, GoParser, RustParser } from './multi-language-parser.js';
+import type { TreeSitterPythonParser, TreeSitterGoParser, TreeSitterRustParser } from './tree-sitter-parser.js';
 import { Storage } from './storage.js';
-import type { IndexedFile, IndexedFunction, IndexedClass, IndexedType } from './types.js';
+import type { ParseResult } from './types.js';
 
 export interface IndexOptions {
   watch?: boolean;
   concurrency?: number;
+  /** Use tree-sitter parsers for Python, Go, and Rust (more precise, requires native deps). */
+  useTreeSitter?: boolean;
 }
 
 export interface IndexProgress {
@@ -18,6 +22,12 @@ export interface IndexProgress {
   errors: number;
 }
 
+/** Event emitted by the watcher when a file change is indexed. */
+export interface WatchEvent {
+  type: 'add' | 'change' | 'unlink';
+  filePath: string;
+}
+
 export class Indexer {
   private tsParser: AstParser;
   private pythonParser: PythonParser;
@@ -25,10 +35,14 @@ export class Indexer {
   private rustParser: RustParser;
   private storage: Storage;
   private _isIndexing = false;
+  private _watcher: FSWatcher | null = null;
+  private _repoDir = '';
+  /** Whether tree-sitter parsers have been initialized yet. */
+  private _treeSitterReady = false;
 
   // Map extensions to parsers
   private parserByExt: Map<string, 
-    { language: string; parseFile: (filePath: string, content: string) => import('./types.js').ParseResult }
+    { language: string; parseFile: (filePath: string, content: string) => ParseResult }
   >;
 
   constructor(storage: Storage, tsParser?: AstParser) {
@@ -39,33 +53,71 @@ export class Indexer {
     this.rustParser = new RustParser();
 
     this.parserByExt = new Map();
-    // TypeScript/JavaScript extensions
+
+    // TypeScript/JavaScript extensions (always use TS Compiler API)
     for (const ext of ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']) {
       this.parserByExt.set(ext, {
         language: ext.startsWith('.t') ? 'typescript' : 'javascript',
         parseFile: (fp, c) => this.tsParser.parseFile(fp, c, ext.startsWith('.t') ? 'typescript' : 'javascript'),
       });
     }
-    // Python extensions
+
+    // Default: Regex-based parsers (zero-dependency)
     for (const ext of this.pythonParser.extensions) {
       this.parserByExt.set(ext, {
         language: 'python',
         parseFile: (fp, c) => this.pythonParser.parseFile(fp, c),
       });
     }
-    // Go extensions
     for (const ext of this.goParser.extensions) {
       this.parserByExt.set(ext, {
         language: 'go',
         parseFile: (fp, c) => this.goParser.parseFile(fp, c),
       });
     }
-    // Rust extensions
     for (const ext of this.rustParser.extensions) {
       this.parserByExt.set(ext, {
         language: 'rust',
         parseFile: (fp, c) => this.rustParser.parseFile(fp, c),
       });
+    }
+  }
+
+  /** Initialize tree-sitter parsers (lazy-loaded to avoid import if not used). */
+  private async initTreeSitterParsers(): Promise<void> {
+    if (this._treeSitterReady) return;
+    try {
+      // Dynamic import for ESM compatibility
+      const mod = await import('./tree-sitter-parser.js');
+      const { TreeSitterPythonParser, TreeSitterGoParser, TreeSitterRustParser } = mod;
+
+      const tsp = new TreeSitterPythonParser();
+      const tsg = new TreeSitterGoParser();
+      const tsr = new TreeSitterRustParser();
+
+      for (const ext of tsp.extensions) {
+        this.parserByExt.set(ext, {
+          language: 'python',
+          parseFile: (fp, c) => tsp.parseFile(fp, c),
+        });
+      }
+      for (const ext of tsg.extensions) {
+        this.parserByExt.set(ext, {
+          language: 'go',
+          parseFile: (fp, c) => tsg.parseFile(fp, c),
+        });
+      }
+      for (const ext of tsr.extensions) {
+        this.parserByExt.set(ext, {
+          language: 'rust',
+          parseFile: (fp, c) => tsr.parseFile(fp, c),
+        });
+      }
+      this._treeSitterReady = true;
+    } catch (err) {
+      console.warn('Tree-sitter parsers not available, falling back to regex-based parsers:',
+        (err as Error).message);
+      this._treeSitterReady = true; // Don't retry
     }
   }
 
@@ -75,10 +127,22 @@ export class Indexer {
 
   /**
    * Index the entire repository. Scans all supported files and builds the database.
+   * Set options.watch to true to start a file watcher after initial indexing.
+   * Set options.useTreeSitter to true for precise tree-sitter AST parsing (Python, Go, Rust).
    */
-  indexRepo(repoDir: string, options?: IndexOptions): IndexProgress {
+  indexRepo(repoDir: string, options?: IndexOptions): Promise<IndexProgress> {
+    return this._doIndexRepo(repoDir, options);
+  }
+
+  private async _doIndexRepo(repoDir: string, options?: IndexOptions): Promise<IndexProgress> {
+    // Lazy-init tree-sitter parsers if requested
+    if (options?.useTreeSitter) {
+      await this.initTreeSitterParsers();
+    }
+
     this._isIndexing = true;
     this.storage.initialize();
+    this._repoDir = repoDir;
 
     const progress: IndexProgress = { total: 0, indexed: 0, skipped: 0, errors: 0 };
     const files = this.findCodeFiles(repoDir);
@@ -145,7 +209,91 @@ export class Indexer {
     }
 
     this._isIndexing = false;
+
+    // Start file watcher if requested
+    if (options?.watch) {
+      this.startWatching(repoDir);
+    }
+
     return progress;
+  }
+
+  // ─── File Watching ──────────────────────────────────────
+
+  /** Start watching the repository for file changes. */
+  startWatching(
+    repoDir: string,
+    onChange?: (event: WatchEvent, progress: IndexProgress) => void,
+  ): void {
+    if (this._watcher) {
+      this.stopWatching();
+    }
+
+    this._repoDir = repoDir;
+    const extensions = Array.from(this.parserByExt.keys());
+
+    this._watcher = chokidar.watch(repoDir, {
+      ignored: [
+        /(^|[\/\\])\./,      // hidden files/directories
+        /node_modules/,
+        /dist/,
+        /\.contextbridge/,
+        /\.git/,
+      ],
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 300,
+        pollInterval: 100,
+      },
+    });
+
+    this._watcher.on('add', (filePath: string) => {
+      if (!extensions.some((ext) => filePath.endsWith(ext))) return;
+      try {
+        this.indexFile(repoDir, filePath);
+        onChange?.({ type: 'add', filePath }, { total: 0, indexed: 1, skipped: 0, errors: 0 });
+      } catch (err) {
+        onChange?.({ type: 'add', filePath }, { total: 0, indexed: 0, skipped: 0, errors: 1 });
+      }
+    });
+
+    this._watcher.on('change', (filePath: string) => {
+      if (!extensions.some((ext) => filePath.endsWith(ext))) return;
+      try {
+        this.indexFile(repoDir, filePath);
+        onChange?.({ type: 'change', filePath }, { total: 0, indexed: 1, skipped: 0, errors: 0 });
+      } catch (err) {
+        onChange?.({ type: 'change', filePath }, { total: 0, indexed: 0, skipped: 0, errors: 1 });
+      }
+    });
+
+    this._watcher.on('unlink', (filePath: string) => {
+      if (!extensions.some((ext) => filePath.endsWith(ext))) return;
+      try {
+        this.removeFile(repoDir, filePath);
+        onChange?.({ type: 'unlink', filePath }, { total: 0, indexed: 0, skipped: 0, errors: 0 });
+      } catch (err) {
+        onChange?.({ type: 'unlink', filePath }, { total: 0, indexed: 0, skipped: 0, errors: 1 });
+      }
+    });
+
+    this._watcher.on('ready', () => {
+      if (!this._watcher) return;
+    });
+  }
+
+  /** Stop the file watcher. */
+  stopWatching(): void {
+    if (this._watcher) {
+      this._watcher.close();
+      this._watcher = null;
+    }
+  }
+
+  /** Check if the watcher is active. */
+  get isWatching(): boolean {
+    return this._watcher !== null;
   }
 
   /**

@@ -21,16 +21,23 @@ program
 program
   .command('init')
   .description('Initialize ContextBridge by indexing the current repository')
-  // Watch mode will be supported in a future release
+  .option('-w, --watch', 'Watch for file changes and re-index automatically')
+  .option('--tree-sitter', 'Use tree-sitter parsers for Python, Go, and Rust (more precise)')
   .action(async (options) => {
     const repoDir = process.cwd();
-    console.log(chalk.blue('🔍 ContextBridge — Indexing repository...'));
+    const useTreeSitter = options.treeSitter || false;
+
+    if (useTreeSitter) {
+      console.log(chalk.blue('🔍 ContextBridge — Indexing repository (tree-sitter mode)...'));
+    } else {
+      console.log(chalk.blue('🔍 ContextBridge — Indexing repository...'));
+    }
     console.log(chalk.gray(`  Directory: ${repoDir}`));
 
     const bridge = new ContextBridge({ repoDir });
     bridge.initialize();
 
-    const progress = bridge.index();
+    const progress = await bridge.index({ watch: options.watch, useTreeSitter });
 
     console.log(chalk.green(`\n✅ Done!`));
     console.log(`  ${chalk.yellow(progress.total)} files found`);
@@ -47,7 +54,20 @@ program
     console.log(`  ${stats.classCount} classes`);
     console.log(`  ${stats.typeCount} types`);
 
-    bridge.close();
+    if (options.watch) {
+      console.log(chalk.cyan(`\n👀 Watching for file changes... (Ctrl+C to stop)`));
+
+      // Graceful shutdown on Ctrl+C / SIGTERM
+      const shutdown = () => {
+        console.log(chalk.gray('\n  Stopping watcher...'));
+        bridge.close();
+        process.exit(0);
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+    } else {
+      bridge.close();
+    }
   });
 
 // ─── Context Command ───────────────────────────────────────

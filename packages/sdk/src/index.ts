@@ -60,8 +60,10 @@ export class ContextBridge {
 
   /**
    * Index the current repository.
+   * Set options.watch to true for file watching.
+   * Set options.useTreeSitter to true for tree-sitter AST parsers.
    */
-  index(options?: { watch?: boolean }): { total: number; indexed: number; skipped: number; errors: number } {
+  async index(options?: { watch?: boolean; useTreeSitter?: boolean }): Promise<{ total: number; indexed: number; skipped: number; errors: number }> {
     return this.indexer.indexRepo(this.config.repoDir, options);
   }
 

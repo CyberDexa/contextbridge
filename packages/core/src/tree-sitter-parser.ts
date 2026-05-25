@@ -1,17 +1,42 @@
 import crypto from 'node:crypto';
-import Parser from 'tree-sitter';
-import Python from 'tree-sitter-python';
-import Go from 'tree-sitter-go';
-import Rust from 'tree-sitter-rust';
 import type { IndexedFile, IndexedFunction, IndexedClass, IndexedType, ParseResult } from './types.js';
+
+// tree-sitter is an optional native dependency — load it dynamically so the module
+// can be imported even when native compilation failed (e.g. unsupported Node version).
+let Parser: typeof import('tree-sitter') | null = null;
+let Python: unknown = null;
+let Go: unknown = null;
+let Rust: unknown = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Parser = require('tree-sitter');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Python = require('tree-sitter-python');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Go = require('tree-sitter-go');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Rust = require('tree-sitter-rust');
+} catch {
+  // Native modules unavailable (e.g. Node version incompatibility).
+  // The Indexer will fall back to regex-based parsers.
+}
+
+/** Returns true if tree-sitter native modules loaded successfully. */
+export function isTreeSitterAvailable(): boolean {
+  return Parser !== null;
+}
 
 /** Base class for tree-sitter-based language parsers. */
 abstract class TreeSitterLanguageParser {
   abstract readonly language: string;
   abstract readonly extensions: string[];
 
-  protected createParser(grammar: Parser.Language): Parser {
-    const parser = new Parser();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected createParser(grammar: any): any {
+    if (!Parser) throw new Error('tree-sitter native module is not available');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parser = new (Parser as any)();
     parser.setLanguage(grammar);
     return parser;
   }
@@ -23,8 +48,10 @@ abstract class TreeSitterLanguageParser {
   }
 
   /** Recursively find all nodes of a given type. */
-  protected findNodes(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode[] {
-    const results: Parser.SyntaxNode[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected findNodes(node: any, type: string): any[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results: any[] = [];
     if (node.type === type) results.push(node);
     for (const child of node.namedChildren) {
       results.push(...this.findNodes(child, type));
@@ -33,12 +60,14 @@ abstract class TreeSitterLanguageParser {
   }
 
   /** Find the first child of a given field name. */
-  protected getField(node: Parser.SyntaxNode, field: string): Parser.SyntaxNode | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected getField(node: any, field: string): any | null {
     return node.childForFieldName(field) ?? null;
   }
 
   /** Count cyclomatic complexity by finding control-flow nodes. */
-  protected estimateComplexity(node: Parser.SyntaxNode, keywords: string[]): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected estimateComplexity(node: any, keywords: string[]): number {
     let complexity = 1;
     for (const kw of keywords) {
       const matches = this.findNodes(node, kw);
@@ -69,11 +98,12 @@ export class TreeSitterPythonParser extends TreeSitterLanguageParser {
   readonly language = 'python';
   readonly extensions = ['.py', '.pyw'];
 
-  private grammar: Parser.Language;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private grammar: any;
 
   constructor() {
     super();
-    this.grammar = Python as unknown as Parser.Language;
+    this.grammar = Python;
   }
 
   parseFile(filePath: string, content: string): ParseResult {
@@ -171,7 +201,8 @@ export class TreeSitterPythonParser extends TreeSitterLanguageParser {
     };
   }
 
-  private extractDocstring(bodyNode: Parser.SyntaxNode | null): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractDocstring(bodyNode: any | null): string {
     if (!bodyNode) return '';
     const exprStmt = bodyNode.namedChildren[0];
     if (exprStmt?.type === 'expression_statement') {
@@ -189,11 +220,12 @@ export class TreeSitterGoParser extends TreeSitterLanguageParser {
   readonly language = 'go';
   readonly extensions = ['.go'];
 
-  private grammar: Parser.Language;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private grammar: any;
 
   constructor() {
     super();
-    this.grammar = Go as unknown as Parser.Language;
+    this.grammar = Go;
   }
 
   parseFile(filePath: string, content: string): ParseResult {
@@ -281,7 +313,8 @@ export class TreeSitterGoParser extends TreeSitterLanguageParser {
     };
   }
 
-  private extractReceiver(funcNode: Parser.SyntaxNode): string | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractReceiver(funcNode: any): string | null {
     const params = this.getField(funcNode, 'parameters');
     if (!params) return null;
     // In Go, a method receiver is the first parameter_declaration with the special
@@ -301,7 +334,8 @@ export class TreeSitterGoParser extends TreeSitterLanguageParser {
     return null;
   }
 
-  private extractStructFields(structNode: Parser.SyntaxNode): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractStructFields(structNode: any): string[] {
     const fields: string[] = [];
     for (const child of structNode.namedChildren) {
       if (child.type === 'field_declaration') {
@@ -313,7 +347,8 @@ export class TreeSitterGoParser extends TreeSitterLanguageParser {
     return fields;
   }
 
-  private extractInterfaceMethods(ifaceNode: Parser.SyntaxNode): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractInterfaceMethods(ifaceNode: any): string[] {
     const methods: string[] = [];
     for (const child of ifaceNode.namedChildren) {
       if (child.type === 'method_spec') {
@@ -324,7 +359,8 @@ export class TreeSitterGoParser extends TreeSitterLanguageParser {
     return methods;
   }
 
-  private extractComment(funcNode: Parser.SyntaxNode): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractComment(funcNode: any): string {
     const prev = funcNode.previousNamedSibling;
     if (prev?.type === 'comment') return prev.text.replace(/^\/\/\s?/gm, '').trim();
     return '';
@@ -336,11 +372,12 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
   readonly language = 'rust';
   readonly extensions = ['.rs'];
 
-  private grammar: Parser.Language;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private grammar: any;
 
   constructor() {
     super();
-    this.grammar = Rust as unknown as Parser.Language;
+    this.grammar = Rust;
   }
 
   parseFile(filePath: string, content: string): ParseResult {
@@ -358,7 +395,7 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
     for (const node of root.namedChildren) {
       // impl blocks
       if (node.type === 'impl_item') {
-        const typeNode = node.namedChildren.find((c) =>
+        const typeNode = node.namedChildren.find((c: any) =>
           c.type === 'type_identifier' || c.type === 'generic_type'
         );
         currentImpl = typeNode?.text ?? null;
@@ -443,7 +480,8 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
   }
 
   private parseRustFunction(
-    node: Parser.SyntaxNode,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    node: any,
     filePath: string,
     implName: string | null,
   ): Omit<IndexedFunction, 'id'> {
@@ -457,10 +495,10 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
     const isPublic = node.text.trimStart().startsWith('pub');
 
     // Check modifiers
-    const modifiers = node.children.filter((c) =>
+    const modifiers = node.children.filter((c: any) =>
       ['async', 'unsafe'].includes(c.type)
     );
-    const isAsync = modifiers.some((m) => m.type === 'async');
+    const isAsync = modifiers.some((m: any) => m.type === 'async');
 
     const fullName = implName ? `${implName}::${name}` : name;
     const docComment = this.extractRustDocComment(node);
@@ -482,7 +520,8 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
     };
   }
 
-  private extractRustFields(structNode: Parser.SyntaxNode): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractRustFields(structNode: any): string[] {
     const fields: string[] = [];
     const fieldDecls = this.findNodes(structNode, 'field_declaration');
     for (const fd of fieldDecls) {
@@ -490,7 +529,7 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
       if (nameNode) fields.push(nameNode.text);
     }
     // Also handle tuple struct fields
-    const tupleFields = structNode.namedChildren.filter((c) =>
+    const tupleFields = structNode.namedChildren.filter((c: any) =>
       c.type === 'field_pattern' || c.type === 'type_identifier'
     );
     for (const tf of tupleFields) {
@@ -499,7 +538,8 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
     return fields;
   }
 
-  private extractRustDocComment(funcNode: Parser.SyntaxNode): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractRustDocComment(funcNode: any): string {
     const comments: string[] = [];
     let prev = funcNode.previousSibling;
     while (prev) {

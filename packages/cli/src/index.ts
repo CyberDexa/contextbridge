@@ -37,6 +37,20 @@ program
     const bridge = new ContextBridge({ repoDir });
     bridge.initialize();
 
+    if (useTreeSitter) {
+      // Check if tree-sitter native modules are available before proceeding
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('tree-sitter');
+      } catch {
+        console.log(chalk.yellow(
+          '⚠️  tree-sitter native module could not be loaded (likely a Node version incompatibility).\n' +
+          '   Falling back to regex-based parsers. Results will still be accurate for TypeScript/JS.\n' +
+          '   To fix: use Node 18–22, or omit --tree-sitter.\n'
+        ));
+      }
+    }
+
     const progress = await bridge.index({ watch: options.watch, useTreeSitter });
 
     console.log(chalk.green(`\n✅ Done!`));

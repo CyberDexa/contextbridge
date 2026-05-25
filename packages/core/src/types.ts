@@ -97,6 +97,77 @@ export interface FeedbackEntry {
   createdAt: string;
 }
 
+// ─── Convention Types ─────────────────────────────────────
+
+export type ConventionCategory =
+  | 'naming'
+  | 'file-structure'
+  | 'testing'
+  | 'exports'
+  | 'imports'
+  | 'directory'
+  | 'architecture';
+
+export interface DetectedConvention {
+  id: string;
+  category: ConventionCategory;
+  name: string;
+  pattern: string;
+  confidence: number; // 0-1
+  examples: string[];
+  description: string;
+  suggestion?: string;
+}
+
+export interface ConventionReport {
+  conventions: DetectedConvention[];
+  summary: string;
+  fileCounts: Record<string, number>;
+}
+
+// ─── Architecture Types ───────────────────────────────────
+
+export interface ModuleBoundary {
+  id: string;
+  name: string;
+  rootPath: string;
+  files: string[];
+  exports: string[];
+  imports: string[];
+  subModules: string[];
+  cohesion: number; // How tightly coupled internally (0-1)
+  coupling: number; // How coupled to other modules (0-1)
+}
+
+export interface ArchitecturalConcept {
+  id: string;
+  name: string;
+  type: 'module' | 'layer' | 'pattern' | 'domain';
+  relatedFiles: string[];
+  description: string;
+  confidence: number;
+  evidence: string[];
+}
+
+// ─── Multi-language Types ─────────────────────────────────
+
+export type SupportedLanguage = 'typescript' | 'javascript' | 'python' | 'go' | 'rust';
+
+export interface LanguageParser {
+  language: SupportedLanguage;
+  extensions: string[];
+  parseFile(filePath: string, content: string): ParseResult;
+  shouldParse(filePath: string): boolean;
+}
+
+// Re-export ParseResult for multi-language use
+export interface ParseResult {
+  file: Omit<IndexedFile, 'id'>;
+  functions: Omit<IndexedFunction, 'id'>[];
+  classes: Omit<IndexedClass, 'id'>[];
+  types: Omit<IndexedType, 'id'>[];
+}
+
 // ─── Config ────────────────────────────────────────────────
 
 export interface ContextBridgeConfig {

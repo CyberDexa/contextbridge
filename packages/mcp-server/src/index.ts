@@ -98,6 +98,48 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      {
+        name: 'detect_conventions',
+        description: 'Detect coding conventions in the codebase (naming, file structure, testing, exports).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            category: {
+              type: 'string',
+              description: 'Optional: filter by category (naming, file-structure, testing, exports, directory)',
+              enum: ['naming', 'file-structure', 'testing', 'exports', 'imports', 'directory'],
+            },
+          },
+        },
+      },
+      {
+        name: 'analyze_architecture',
+        description: 'Analyze module boundaries, detect architectural patterns and layers in the codebase.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            mode: {
+              type: 'string',
+              description: 'Analysis mode: full, modules-only, concepts-only',
+              enum: ['full', 'modules', 'concepts'],
+            },
+          },
+        },
+      },
+      {
+        name: 'get_graph',
+        description: 'Retrieve the knowledge graph structure — nodes, edges, clusters, and statistics.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            format: {
+              type: 'string',
+              description: 'Output format: summary, json, dot',
+              enum: ['summary', 'json', 'dot'],
+            },
+          },
+        },
+      },
     ],
   };
 });
@@ -209,6 +251,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
+    }
+
+    case 'detect_conventions': {
+      const category = args?.category as string | undefined;
+      let result;
+
+      if (category) {
+        const conventions = bridge.getConventionsByCategory(
+          category as import('@contextbridge/core').ConventionCategory,
+        );
+        result = { conventions, summary: `Filtered by ${category}`, fileCounts: {} };
+      } else {
+        result = bridge.detectConventions();
+      }
+
+      let text = result.summary + '\n\n';
+      for (const c of result.conventions) {
+        text += `## ${c.name} (${Math.round(c.confidence * 100)}%)\n`;
+        text += `${c.description}\n`;
+        if (c.suggestion) text += `💡 ${c.suggestion}\n`;
+        if (c.examples.length > 0) {
+          text += `Examples: ${c.examples.slice(0, 3).join(', ')}\n`;
+        }
+        text += '\n';
+      }
+
+      return {
+        content: [{ type: 'text', text }],
+      };
+    }
+
+    case 'analyze_architecture': {
+      const mode = (args?.mode as string) || 'full';
+      const arch = bridge.analyzeArchitecture();
+
+      let text = '';
+      if (mode !== 'concepts') {
+        text += `## Module Boundaries (${arch.modules.length})\n\n`;
+        for (const mod of arch.modules.slice(0, 15)) {
+          text += `### ${mod.name}\n`;
+          text += `- Path: ${mod.rootPath}\n`;
+          text += `- Files: ${mod.files.length}\n`;
+          text += `- Cohesion: ${Math.round(mod.cohesion * 100)}%\n`;
+          text += `- Coupling: ${Math.round(mod.coupling * 100)}%\n`;
+          text += `- Exports: ${mod.exports.length}\n`;
+          if (mod.subModules.length > 0) text += `- Sub-modules: ${mod.subModules.join(', ')}\n`;
+          text += '\n';
+        }
+      }
+
+      if (mode !== 'modules' && arch.concepts.length > 0) {
+        text += `## Architectural Concepts (${arch.concepts.length})\n\n`;
+        for (const c of arch.concepts) {
+          text += `### ${c.name} (${c.type}, ${Math.round(c.confidence * 100)}%)\n`;
+          text += `${c.description}\n`;
+          if (c.evidence.length > 0) text += `Evidence: ${c.evidence.slice(0, 3).join(', ')}\n`;
+          text += '\n';
+        }
+      }
+
+      return { content: [{ type: 'text', text }] };
+    }
+
+    case 'get_graph': {
+      const format = (args?.format as string) || 'summary';
+
+      if (format === 'json') {
+        const graph = bridge.getKnowledgeGraph();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(graph, null, 2) }],
+        };
+      } else if (format === 'dot') {
+        const dot = bridge.exportGraphDot();
+        return {
+          content: [{ type: 'text', text: dot }],
+        };
+      } else {
+        const graph = bridge.getKnowledgeGraph();
+        let text = `## Knowledge Graph Summary\n\n`;
+        text += `- Nodes: ${graph.stats.nodeCount}\n`;
+        text += `- Edges: ${graph.stats.edgeCount}\n`;
+        text += `- Clusters: ${graph.clusters.length}\n`;
+        text += `- Avg Degree: ${graph.stats.averageDegree}\n\n`;
+
+        text += `### Node Types\n`;
+        for (const [type, count] of Object.entries(graph.stats.nodeTypeBreakdown)) {
+          text += `- ${type}: ${count}\n`;
+        }
+
+        text += `\n### Top Clusters\n`;
+        for (const cluster of graph.clusters.slice(0, 8)) {
+          text += `- **${cluster.name}**: ${cluster.nodes.length} nodes, density ${cluster.density}\n`;
+        }
+
+        return { content: [{ type: 'text', text }] };
+      }
     }
 
     default:

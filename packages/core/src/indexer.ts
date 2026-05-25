@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { AstParser } from './ast-parser.js';
+import { PythonParser, GoParser, RustParser } from './multi-language-parser.js';
 import { Storage } from './storage.js';
+import type { IndexedFile, IndexedFunction, IndexedClass, IndexedType } from './types.js';
 
 export interface IndexOptions {
   watch?: boolean;
@@ -17,13 +19,54 @@ export interface IndexProgress {
 }
 
 export class Indexer {
-  private parser: AstParser;
+  private tsParser: AstParser;
+  private pythonParser: PythonParser;
+  private goParser: GoParser;
+  private rustParser: RustParser;
   private storage: Storage;
   private _isIndexing = false;
 
-  constructor(storage: Storage, parser?: AstParser) {
+  // Map extensions to parsers
+  private parserByExt: Map<string, 
+    { language: string; parseFile: (filePath: string, content: string) => import('./types.js').ParseResult }
+  >;
+
+  constructor(storage: Storage, tsParser?: AstParser) {
     this.storage = storage;
-    this.parser = parser || new AstParser();
+    this.tsParser = tsParser || new AstParser();
+    this.pythonParser = new PythonParser();
+    this.goParser = new GoParser();
+    this.rustParser = new RustParser();
+
+    this.parserByExt = new Map();
+    // TypeScript/JavaScript extensions
+    for (const ext of ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']) {
+      this.parserByExt.set(ext, {
+        language: ext.startsWith('.t') ? 'typescript' : 'javascript',
+        parseFile: (fp, c) => this.tsParser.parseFile(fp, c, ext.startsWith('.t') ? 'typescript' : 'javascript'),
+      });
+    }
+    // Python extensions
+    for (const ext of this.pythonParser.extensions) {
+      this.parserByExt.set(ext, {
+        language: 'python',
+        parseFile: (fp, c) => this.pythonParser.parseFile(fp, c),
+      });
+    }
+    // Go extensions
+    for (const ext of this.goParser.extensions) {
+      this.parserByExt.set(ext, {
+        language: 'go',
+        parseFile: (fp, c) => this.goParser.parseFile(fp, c),
+      });
+    }
+    // Rust extensions
+    for (const ext of this.rustParser.extensions) {
+      this.parserByExt.set(ext, {
+        language: 'rust',
+        parseFile: (fp, c) => this.rustParser.parseFile(fp, c),
+      });
+    }
   }
 
   get isIndexing(): boolean {
@@ -56,7 +99,16 @@ export class Indexer {
         }
 
         const language = this.detectLanguage(filePath);
-        const result = this.parser.parseFile(relativePath, content, language);
+        const ext = path.extname(filePath);
+        const parser = this.parserByExt.get(ext);
+
+        let result;
+        if (parser) {
+          result = parser.parseFile(relativePath, content);
+        } else {
+          // Fallback to TypeScript parser
+          result = this.tsParser.parseFile(relativePath, content, language);
+        }
 
         // Upsert file
         const fileId = relativePath; // Use path as ID
@@ -103,11 +155,18 @@ export class Indexer {
     this.storage.initialize();
 
     const relativePath = path.relative(repoDir, filePath);
-    if (!this.parser.shouldParse(relativePath)) return;
+    const ext = path.extname(filePath);
+    if (!this.parserByExt.has(ext)) return;
 
     const content = fs.readFileSync(filePath, 'utf-8');
     const language = this.detectLanguage(filePath);
-    const result = this.parser.parseFile(relativePath, content, language);
+    const parser = this.parserByExt.get(ext);
+    let result;
+    if (parser) {
+      result = parser.parseFile(relativePath, content);
+    } else {
+      result = this.tsParser.parseFile(relativePath, content, language);
+    }
     const fileId = relativePath;
 
     // Remove old data and re-insert
@@ -157,7 +216,7 @@ export class Indexer {
           if (entry.name === 'dist') continue;
           if (entry.name === '.contextbridge') continue;
           walk(fullPath);
-        } else if (entry.isFile() && this.parser.shouldParse(entry.name)) {
+        } else if (entry.isFile() && this.parserByExt.has(path.extname(entry.name))) {
           files.push(fullPath);
         }
       }
@@ -200,8 +259,22 @@ export class Indexer {
       case '.mjs':
       case '.cjs':
         return 'javascript';
+      case '.py':
+      case '.pyw':
+        return 'python';
+      case '.go':
+        return 'go';
+      case '.rs':
+        return 'rust';
       default:
         return 'unknown';
     }
+  }
+
+  /**
+   * Get supported language parsers for the current indexer.
+   */
+  getSupportedLanguages(): string[] {
+    return ['typescript', 'javascript', 'python', 'go', 'rust'];
   }
 }

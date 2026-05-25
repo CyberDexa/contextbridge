@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ContextBridge — Knowledge Graph Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+    --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+  .sidebar {
+    width: 320px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .sidebar-header p { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .sidebar-section {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-section h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 13px;
+  }
+  .stat-value { font-weight: 600; color: var(--accent); }
+  .cluster-item {
+    padding: 8px 12px;
+    margin: 4px 0;
+    background: rgba(88,166,255,0.05);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 13px;
+  }
+  .cluster-item:hover { background: rgba(88,166,255,0.12); }
+  .cluster-item .name { font-weight: 600; }
+  .cluster-item .meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .toolbar {
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .toolbar button, .toolbar select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .toolbar button:hover { background: rgba(88,166,255,0.1); }
+  .toolbar button.active { background: rgba(88,166,255,0.2); border-color: var(--accent); }
+  .toolbar .separator { width: 1px; background: var(--border); height: 24px; margin: 0 4px; }
+  .graph-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .graph-container svg { width: 100%; height: 100%; }
+  .node circle { stroke: var(--border); stroke-width: 1.5px; }
+  .node text { font-size: 10px; fill: var(--text); pointer-events: none; }
+  .link { stroke: var(--border); stroke-opacity: 0.6; stroke-width: 1px; }
+  .link.has_function { stroke: var(--accent2); stroke-width: 1px; }
+  .link.imports { stroke: var(--warn); stroke-width: 1.5px; }
+  .link.extends { stroke: var(--purple); stroke-width: 1.5px; }
+  .tooltip {
+    position: absolute;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    max-width: 300px;
+    z-index: 100;
+    display: none;
+  }
+  .tooltip .title { font-weight: 600; margin-bottom: 4px; }
+  .tooltip .detail { color: var(--text-muted); font-size: 11px; }
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 40px;
+  }
+  .empty-state h2 { margin-bottom: 8px; color: var(--text); }
+  .loading { animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>🧠 ContextBridge</h1>
+    <p>Knowledge Graph Dashboard</p>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>📊 Graph Stats</h3>
+    <div id="stats-container">
+      <div class="stat-row"><span>Nodes</span><span class="stat-value" id="stat-nodes">—</span></div>
+      <div class="stat-row"><span>Edges</span><span class="stat-value" id="stat-edges">—</span></div>
+      <div class="stat-row"><span>Clusters</span><span class="stat-value" id="stat-clusters">—</span></div>
+      <div class="stat-row"><span>Avg Degree</span><span class="stat-value" id="stat-degree">—</span></div>
+    </div>
+  </div>
+
+  <div class="sidebar-section" style="flex:1; overflow-y:auto;">
+    <h3>📦 Top Clusters</h3>
+    <div id="clusters-container">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>🔄 Filter</h3>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" checked id="filter-node-file"> Files
+      </label>
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" checked id="filter-node-function"> Functions
+      </label>
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="filter-node-class"> Classes
+      </label>
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="filter-node-type"> Types
+      </label>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="toolbar">
+    <button class="active" id="btn-force">Force Layout</button>
+    <button id="btn-radial">Radial</button>
+    <button id="btn-reset">Reset Zoom</button>
+    <div class="separator"></div>
+    <span style="font-size:12px;color:var(--text-muted);" id="visible-count">0 / 0 visible</span>
+    <div class="separator"></div>
+    <button id="btn-export-png">Export PNG</button>
+  </div>
+  <div class="graph-container" id="graph-container">
+    <div class="empty-state" id="empty-state">
+      <h2>No graph data loaded</h2>
+      <p>Run <code>cb init</code> to index your repository, then <code>cb graph --json > graph.json</code> and load it here.</p>
+      <br/>
+      <button onclick="document.getElementById('file-input').click()" style="background:var(--accent);color:var(--bg);border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:600;">
+        Load graph.json
+      </button>
+      <input type="file" id="file-input" accept=".json" style="display:none" onchange="loadFile(event)">
+    </div>
+    <svg id="graph-svg" style="display:none;"></svg>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+// State
+let graphData = null;
+let simulation = null;
+let currentLayout = 'force';
+
+// DOM refs
+const container = document.getElementById('graph-container');
+const svg = document.getElementById('graph-svg');
+const tooltip = document.getElementById('tooltip');
+const emptyState = document.getElementById('empty-state');
+
+// Load graph from file upload or drag-drop
+function loadFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      initGraph(data);
+    } catch (err) {
+      alert('Invalid JSON file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Also support drag-drop
+container.addEventListener('dragover', (e) => { e.preventDefault(); container.style.opacity = '0.7'; });
+container.addEventListener('dragleave', () => { container.style.opacity = '1'; });
+container.addEventListener('drop', (e) => {
+  e.preventDefault();
+  container.style.opacity = '1';
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      initGraph(data);
+    } catch (err) {
+      alert('Invalid JSON file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+function initGraph(data) {
+  graphData = data;
+  emptyState.style.display = 'none';
+  svg.style.display = 'block';
+  updateStats(data);
+  updateClusters(data);
+  updateFilters();
+  renderForceLayout();
+}
+
+function updateStats(data) {
+  document.getElementById('stat-nodes').textContent = data.summary?.totalNodes || data.nodes?.length || 0;
+  document.getElementById('stat-edges').textContent = data.summary?.totalEdges || data.edges?.length || 0;
+  document.getElementById('stat-clusters').textContent = data.summary?.totalClusters || data.clusters?.length || 0;
+  const n = data.nodes?.length || 1;
+  const e = data.edges?.length || 0;
+  document.getElementById('stat-degree').textContent = (e * 2 / n).toFixed(1);
+}
+
+function updateClusters(data) {
+  const container = document.getElementById('clusters-container');
+  const clusters = data.clusters || [];
+  if (clusters.length === 0) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No clusters detected</div>';
+    return;
+  }
+  container.innerHTML = clusters.slice(0, 12).map((c, i) =>
+    `<div class="cluster-item" onclick="highlightCluster('${c.id || i}')">
+      <div class="name">${escapeHtml(c.name)}</div>
+      <div class="meta">${c.nodes?.length || 0} nodes · density ${c.density || 0}</div>
+    </div>`
+  ).join('');
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]); }
+
+function getFilteredData() {
+  if (!graphData) return { nodes: [], edges: [] };
+  const showFile = document.getElementById('filter-node-file').checked;
+  const showFunc = document.getElementById('filter-node-function').checked;
+  const showClass = document.getElementById('filter-node-class').checked;
+  const showType = document.getElementById('filter-node-type').checked;
+  const allowedTypes = new Set();
+  if (showFile) allowedTypes.add('file');
+  if (showFunc) allowedTypes.add('function');
+  if (showClass) allowedTypes.add('class');
+  if (showType) allowedTypes.add('type');
+
+  const nodes = graphData.nodes.filter(n => allowedTypes.has(n.type));
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const edges = graphData.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+  return { nodes, edges };
+}
+
+function updateFilters() {
+  const d = getFilteredData();
+  document.getElementById('visible-count').textContent = `${d.nodes.length} / ${graphData?.nodes?.length || 0} visible`;
+}
+
+document.querySelectorAll('#filter-node-file, #filter-node-function, #filter-node-class, #filter-node-type')
+  .forEach(cb => cb.addEventListener('change', () => { updateFilters(); renderCurrentLayout(); }));
+
+function getColor(type) {
+  const colors = { file: '#58a6ff', function: '#3fb950', class: '#f0883e', type: '#bc8cff' };
+  return colors[type] || '#8b949e';
+}
+
+function getRadius(type) {
+  return { file: 6, function: 3.5, class: 5, type: 4 }[type] || 4;
+}
+
+function renderCurrentLayout() {
+  if (currentLayout === 'force') renderForceLayout();
+  else if (currentLayout === 'radial') renderRadialLayout();
+}
+
+function renderForceLayout() {
+  currentLayout = 'force';
+  const data = getFilteredData();
+  if (data.nodes.length === 0) return;
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  svg.innerHTML = '';
+
+  // Clip the node count for performance
+  const maxNodes = 500;
+  const displayNodes = data.nodes.length > maxNodes
+    ? data.nodes.slice(0, maxNodes) : data.nodes;
+  const nodeIds = new Set(displayNodes.map(n => n.id));
+  const displayEdges = data.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+  const g = d3.select(svg)
+    .attr('width', width).attr('height', height)
+    .append('g');
+
+  const zoom = d3.zoom()
+    .scaleExtent([0.1, 10])
+    .on('zoom', (event) => g.attr('transform', event.transform));
+  d3.select(svg).call(zoom);
+
+  const link = g.append('g').selectAll('line')
+    .data(displayEdges).join('line')
+    .attr('class', d => `link ${d.type || ''}`)
+    .attr('stroke-opacity', 0.3);
+
+  const node = g.append('g').selectAll('g')
+    .data(displayNodes).join('g')
+    .attr('class', 'node')
+    .call(d3.drag()
+      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  node.append('circle')
+    .attr('r', d => getRadius(d.type))
+    .attr('fill', d => getColor(d.type))
+    .attr('stroke', d => d3.color(getColor(d.type)).darker(0.3))
+    .on('mouseover', (event, d) => {
+      tooltip.style.display = 'block';
+      tooltip.innerHTML = `<div class="title">${escapeHtml(d.label)}</div>
+        <div class="detail">Type: ${d.type}</div>
+        ${d.properties?.path ? `<div class="detail">Path: ${escapeHtml(d.properties.path)}</div>` : ''}
+        ${d.properties?.signature ? `<div class="detail">Sig: ${escapeHtml(d.properties.signature)}</div>` : ''}`;
+    })
+    .on('mousemove', (event) => {
+      tooltip.style.left = (event.pageX - container.getBoundingClientRect().left + 12) + 'px';
+      tooltip.style.top = (event.pageY - container.getBoundingClientRect().top + 12) + 'px';
+    })
+    .on('mouseout', () => { tooltip.style.display = 'none'; });
+
+  node.append('text')
+    .attr('dx', d => getRadius(d.type) + 4)
+    .attr('dy', 3)
+    .text(d => d.label?.length > 20 ? d.label.slice(0, 18) + '…' : d.label);
+
+  simulation = d3.forceSimulation(displayNodes)
+    .force('link', d3.forceLink(displayEdges).id(d => d.id).distance(80))
+    .force('charge', d3.forceManyBody().strength(-150))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(d => getRadius(d.type) + 10))
+    .on('tick', () => {
+      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+}
+
+function renderRadialLayout() {
+  currentLayout = 'radial';
+  const data = getFilteredData();
+  if (data.nodes.length === 0) return;
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  const cx = width / 2, cy = height / 2;
+  const radius = Math.min(width, height) / 2 - 40;
+
+  svg.innerHTML = '';
+
+  const g = d3.select(svg)
+    .attr('width', width).attr('height', height)
+    .append('g');
+
+  const zoom = d3.zoom()
+    .scaleExtent([0.1, 10])
+    .on('zoom', (event) => g.attr('transform', event.transform));
+  d3.select(svg).call(zoom);
+
+  // Group by type and arrange in concentric rings
+  const types = ['file', 'function', 'class', 'type'];
+  const grouped = {};
+  types.forEach(t => { grouped[t] = data.nodes.filter(n => n.type === t); });
+
+  let typeIndex = 0;
+  for (const type of types) {
+    const nodes = grouped[type];
+    if (nodes.length === 0) continue;
+    const r = radius * (0.3 + typeIndex * 0.25);
+    nodes.forEach((n, i) => {
+      const angle = (2 * Math.PI * i) / nodes.length;
+      n.x = cx + r * Math.cos(angle);
+      n.y = cy + r * Math.sin(angle);
+    });
+    typeIndex++;
+  }
+
+  const allNodes = data.nodes;
+  const nodeIds = new Set(allNodes.map(n => n.id));
+  const displayEdges = data.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+  g.selectAll('line').data(displayEdges).join('line')
+    .attr('class', d => `link ${d.type || ''}`)
+    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+
+  const node = g.selectAll('g').data(allNodes).join('g')
+    .attr('class', 'node')
+    .attr('transform', d => `translate(${d.x},${d.y})`);
+
+  node.append('circle')
+    .attr('r', d => getRadius(d.type))
+    .attr('fill', d => getColor(d.type));
+
+  node.append('text')
+    .attr('dx', d => getRadius(d.type) + 4).attr('dy', 3)
+    .text(d => d.label?.length > 15 ? d.label.slice(0, 13) + '…' : d.label);
+}
+
+function highlightCluster(clusterId) {
+  if (!graphData) return;
+  const clusters = graphData.clusters || [];
+  const cluster = clusters.find(c => String(c.id || c.name) === String(clusterId));
+  if (!cluster || !cluster.nodes) return;
+
+  const clusterNodeIds = new Set(cluster.nodes);
+  d3.selectAll('.node').each(function(d) {
+    const inCluster = clusterNodeIds.has(d.id);
+    d3.select(this).style('opacity', inCluster ? 1 : 0.15)
+      .select('circle').attr('stroke', inCluster ? '#fff' : null);
+  });
+  d3.selectAll('.link').style('opacity', 0.05);
+
+  // Highlight cluster items in sidebar
+  const clusterName = cluster.name || cluster.id || '';
+  document.querySelectorAll('.cluster-item').forEach(el => {
+    const nameText = el.querySelector('.name').textContent.trim();
+    el.style.background = nameText === clusterName ? 'rgba(88,166,255,0.2)' : '';
+  });
+}
+
+// Toolbar button handlers
+document.getElementById('btn-force').addEventListener('click', function() {
+  this.classList.add('active');
+  document.getElementById('btn-radial').classList.remove('active');
+  renderForceLayout();
+});
+
+document.getElementById('btn-radial').addEventListener('click', function() {
+  this.classList.add('active');
+  document.getElementById('btn-force').classList.remove('active');
+  renderRadialLayout();
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (simulation) { simulation.alpha(1).restart(); }
+  d3.select(svg).transition().duration(300).call(
+    d3.zoom().transform, d3.zoomIdentity
+  );
+});
+
+document.getElementById('btn-export-png').addEventListener('click', () => {
+  const serializer = new XMLSerializer();
+  const svgString = serializer.serializeToString(svg);
+  const canvas = document.createElement('canvas');
+  canvas.width = container.clientWidth * 2;
+  canvas.height = container.clientHeight * 2;
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  img.onload = () => {
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(url);
+    const a = document.createElement('a');
+    a.download = 'contextbridge-graph.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  };
+  img.src = url;
+});
+
+// Drag-drop visual feedback
+window.addEventListener('load', () => {
+  console.log('ContextBridge Dashboard ready. Drop a graph.json file or use the file picker.');
+});
+</script>
+</body>
+</html>

@@ -5,14 +5,8 @@ import {
   type IndexedFunction,
   type IndexedClass,
   type IndexedType,
+  type ParseResult,
 } from './types.js';
-
-export interface ParseResult {
-  file: Omit<IndexedFile, 'id'>;
-  functions: Omit<IndexedFunction, 'id'>[];
-  classes: Omit<IndexedClass, 'id'>[];
-  types: Omit<IndexedType, 'id'>[];
-}
 
 export class AstParser {
   /**

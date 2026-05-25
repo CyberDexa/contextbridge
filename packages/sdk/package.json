@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/dashboard.html dist/",
     "dev": "tsc --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

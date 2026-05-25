@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { ContextBridge } from '@contextbridge/sdk';
+import type { ConventionCategory } from '@contextbridge/core';
 import path from 'node:path';
 import fs from 'node:fs';
 import chalk from 'chalk';
@@ -246,7 +247,8 @@ program
 program
   .command('status')
   .description('Show indexing status for the current repository')
-  .action(async () => {
+  .option('--conventions', 'Also show detected conventions summary')
+  .action(async (options) => {
     const repoDir = process.cwd();
     const dbPath = path.join(repoDir, '.contextbridge', 'contextbridge.db');
 
@@ -268,7 +270,264 @@ program
     console.log(`  ${chalk.bold('Types:')}     ${stats.typeCount}`);
     console.log(`  ${chalk.bold('DB Size:')}   ${(dbStats.size / 1024).toFixed(1)} KB`);
 
+    if (options.conventions) {
+      const report = bridge.detectConventions();
+      console.log(`\n${chalk.magenta('🎨 Convention Summary:')}`);
+      for (const c of report.conventions.filter((c) => c.confidence > 0.7)) {
+        const badge = c.confidence > 0.9 ? chalk.green('●') : chalk.yellow('●');
+        console.log(`  ${badge} ${c.name} (${Math.round(c.confidence * 100)}%)`);
+      }
+    }
+
     bridge.close();
+  });
+
+// ─── Conventions Command ──────────────────────────────────
+
+program
+  .command('conventions')
+  .description('Detect and display coding conventions in the codebase')
+  .option('-c, --category <category>', 'Filter by category: naming, file-structure, testing, exports, directory')
+  .option('-j, --json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed examples')
+  .action(async (options) => {
+    const repoDir = process.cwd();
+    const dbPath = path.join(repoDir, '.contextbridge', 'contextbridge.db');
+
+    if (!fs.existsSync(dbPath)) {
+      console.log(chalk.yellow('⚠️  Not indexed yet. Run `cb init` to index this repository.'));
+      return;
+    }
+
+    const bridge = new ContextBridge({ repoDir });
+    bridge.initialize();
+
+    let report;
+    if (options.category) {
+      const conventions = bridge.getConventionsByCategory(
+        options.category as ConventionCategory,
+      );
+      report = { conventions, summary: `Filtered by ${options.category}`, fileCounts: {} };
+    } else {
+      report = bridge.detectConventions();
+    }
+
+    if (options.json) {
+      console.log(JSON.stringify(report, null, 2));
+      bridge.close();
+      return;
+    }
+
+    console.log(chalk.cyan('\n🎨 Codebase Conventions\n'));
+    console.log(chalk.gray('─'.repeat(60)));
+
+    const categories = [...new Set(report.conventions.map((c) => c.category))];
+
+    for (const cat of categories) {
+      const catConvs = report.conventions.filter((c) => c.category === cat);
+      const catLabel = cat.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+      console.log(chalk.bold(`\n📁 ${catLabel}`));
+
+      for (const conv of catConvs) {
+        const badge =
+          conv.confidence > 0.9
+            ? chalk.green('HIGH')
+            : conv.confidence > 0.7
+              ? chalk.yellow('MED ')
+              : chalk.red('LOW ');
+        console.log(`  ${badge} ${chalk.bold(conv.name)}`);
+        console.log(`       ${conv.description}`);
+        if (conv.suggestion) {
+          console.log(`       ${chalk.italic.gray(`💡 ${conv.suggestion}`)}`);
+        }
+        if (options.verbose && conv.examples.length > 0) {
+          for (const ex of conv.examples.slice(0, 3)) {
+            console.log(`       ${chalk.gray(`→ ${ex}`)}`);
+          }
+        }
+      }
+    }
+
+    console.log(chalk.gray('\n' + '─'.repeat(60)));
+    console.log(chalk.gray(`  ${report.conventions.length} conventions detected across ${categories.length} categories`));
+
+    bridge.close();
+  });
+
+// ─── Architecture Command ────────────────────────────────
+
+program
+  .command('architecture')
+  .description('Analyze module boundaries and architectural patterns')
+  .option('-j, --json', 'Output as JSON')
+  .option('-m, --modules-only', 'Show only module boundaries')
+  .option('-c, --concepts-only', 'Show only architectural concepts')
+  .action(async (options) => {
+    const repoDir = process.cwd();
+    const dbPath = path.join(repoDir, '.contextbridge', 'contextbridge.db');
+
+    if (!fs.existsSync(dbPath)) {
+      console.log(chalk.yellow('⚠️  Not indexed yet. Run `cb init` to index this repository.'));
+      return;
+    }
+
+    const bridge = new ContextBridge({ repoDir });
+    bridge.initialize();
+
+    const arch = bridge.analyzeArchitecture();
+
+    if (options.json) {
+      console.log(JSON.stringify(arch, null, 2));
+      bridge.close();
+      return;
+    }
+
+    console.log(chalk.cyan('\n🏗️  Architecture Analysis\n'));
+    console.log(chalk.gray('─'.repeat(60)));
+
+    if (!options.conceptsOnly) {
+      console.log(chalk.bold(`\n📦 Module Boundaries (${arch.modules.length})\n`));
+      for (const mod of arch.modules) {
+        const cohesionColor =
+          mod.cohesion > 0.5 ? chalk.green : mod.cohesion > 0.2 ? chalk.yellow : chalk.red;
+        const couplingColor =
+          mod.coupling < 0.3 ? chalk.green : mod.coupling < 0.6 ? chalk.yellow : chalk.red;
+
+        console.log(`  ${chalk.bold(mod.name)}`);
+        console.log(`    Path:     ${mod.rootPath}`);
+        console.log(`    Files:    ${mod.files.length}`);
+        console.log(`    Cohesion: ${cohesionColor(`${Math.round(mod.cohesion * 100)}%`)} (higher = tighter)`);
+        console.log(`    Coupling: ${couplingColor(`${Math.round(mod.coupling * 100)}%`)} (lower = more independent)`);
+        if (mod.subModules.length > 0) {
+          console.log(`    Sub:      ${mod.subModules.join(', ')}`);
+        }
+        console.log();
+      }
+    }
+
+    if (!options.modulesOnly && arch.concepts.length > 0) {
+      console.log(chalk.bold(`\n🧩 Architectural Patterns (${arch.concepts.length})\n`));
+      for (const c of arch.concepts) {
+        const badge =
+          c.confidence > 0.8 ? chalk.green('HIGH') : c.confidence > 0.5 ? chalk.yellow('MED ') : chalk.red('LOW ');
+        console.log(`  ${badge} ${chalk.bold(c.name)} (${c.type})`);
+        console.log(`       ${c.description}`);
+        if (c.evidence.length > 0) {
+          console.log(`       Evidence: ${c.evidence.slice(0, 3).join(', ')}`);
+        }
+        console.log();
+      }
+    }
+
+    console.log(chalk.gray('─'.repeat(60)));
+    bridge.close();
+  });
+
+// ─── Graph Command ────────────────────────────────────────
+
+program
+  .command('graph')
+  .description('Explore and export the knowledge graph')
+  .option('-j, --json', 'Export as dashboard-ready JSON')
+  .option('-d, --dot', 'Export as DOT format (Graphviz)')
+  .option('-s, --stats', 'Show graph statistics')
+  .option('-o, --output <file>', 'Write output to file')
+  .action(async (options) => {
+    const repoDir = process.cwd();
+    const dbPath = path.join(repoDir, '.contextbridge', 'contextbridge.db');
+
+    if (!fs.existsSync(dbPath)) {
+      console.log(chalk.yellow('⚠️  Not indexed yet. Run `cb init` to index this repository.'));
+      return;
+    }
+
+    const bridge = new ContextBridge({ repoDir });
+    bridge.initialize();
+
+    if (options.stats) {
+      const graph = bridge.getKnowledgeGraph();
+      console.log(chalk.cyan('\n📊 Knowledge Graph Stats\n'));
+      console.log(`  ${chalk.bold('Nodes:')}  ${graph.stats.nodeCount}`);
+      console.log(`  ${chalk.bold('Edges:')}  ${graph.stats.edgeCount}`);
+      console.log(`  ${chalk.bold('Clusters:')} ${graph.clusters.length}`);
+      console.log(`  ${chalk.bold('Avg Degree:')} ${graph.stats.averageDegree}`);
+      console.log(`\n  ${chalk.bold('Node Types:')}`);
+      for (const [type, count] of Object.entries(graph.stats.nodeTypeBreakdown)) {
+        console.log(`    ${type}: ${count}`);
+      }
+      console.log(`\n  ${chalk.bold('Edge Types:')}`);
+      for (const [type, count] of Object.entries(graph.stats.edgeTypeBreakdown)) {
+        console.log(`    ${type}: ${count}`);
+      }
+    } else if (options.dot) {
+      const dot = bridge.exportGraphDot();
+      if (options.output) {
+        fs.writeFileSync(options.output, dot);
+        console.log(chalk.green(`✅ Graph exported to ${options.output}`));
+      } else {
+        console.log(dot);
+      }
+    } else if (options.json) {
+      const json = bridge.exportGraphJson();
+      if (options.output) {
+        fs.writeFileSync(options.output, json);
+        console.log(chalk.green(`✅ Graph exported to ${options.output}`));
+      } else {
+        console.log(json);
+      }
+    } else {
+      // Default: show graph summary
+      const graph = bridge.getKnowledgeGraph();
+      console.log(chalk.cyan('\n🧠 Knowledge Graph\n'));
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(`  Nodes: ${graph.stats.nodeCount} | Edges: ${graph.stats.edgeCount} | Clusters: ${graph.clusters.length}`);
+      console.log(chalk.gray('─'.repeat(60)));
+
+      if (graph.clusters.length > 0) {
+        console.log(chalk.bold('\n📦 Top Clusters:\n'));
+        for (const cluster of graph.clusters.slice(0, 8)) {
+          console.log(`  ${chalk.bold(cluster.name)} — ${cluster.nodes.length} nodes, density: ${cluster.density}`);
+        }
+      }
+
+      console.log(chalk.gray('\n  Use --json, --dot, or --stats for detailed output.'));
+    }
+
+    bridge.close();
+  });
+
+// ─── Serve Command ────────────────────────────────────────
+
+program
+  .command('serve')
+  .description('Start the dashboard server with API endpoints')
+  .option('-p, --port <port>', 'Port to listen on', '4620')
+  .action(async (options) => {
+    const repoDir = process.cwd();
+    const dbPath = path.join(repoDir, '.contextbridge', 'contextbridge.db');
+
+    if (!fs.existsSync(dbPath)) {
+      console.log(chalk.yellow('⚠️  Not indexed yet. Run `cb init` first.'));
+      return;
+    }
+
+    const port = parseInt(options.port, 10);
+    const bridge = new ContextBridge({ repoDir });
+    bridge.initialize();
+
+    const server = bridge.serve(port);
+
+    // Handle graceful shutdown
+    const shutdown = () => {
+      console.log(chalk.gray('\n  Shutting down...'));
+      server.close(() => {
+        bridge.close();
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   });
 
 // ─── Parse Arguments ───────────────────────────────────────

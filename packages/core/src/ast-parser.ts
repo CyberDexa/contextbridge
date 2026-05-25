@@ -24,8 +24,24 @@ export class AstParser {
     const functions: Omit<IndexedFunction, 'id'>[] = [];
     const classes: Omit<IndexedClass, 'id'>[] = [];
     const types: Omit<IndexedType, 'id'>[] = [];
+    const imports: string[] = [];
 
     const visit = (node: ts.Node) => {
+      // ─── Import Declarations ───────────────────────
+      if (ts.isImportDeclaration(node)) {
+        const spec = node.moduleSpecifier;
+        if (ts.isStringLiteral(spec)) {
+          imports.push(spec.text);
+        }
+      }
+
+      // ─── Export-from (re-exports) ──────────────────
+      if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+        const spec = node.moduleSpecifier;
+        if (ts.isStringLiteral(spec)) {
+          imports.push(spec.text);
+        }
+      }
       // ─── Functions ─────────────────────────────────
       if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
         const name = node.name?.text || '(anonymous)';
@@ -124,7 +140,7 @@ export class AstParser {
       lastIndexedAt: new Date().toISOString(),
     };
 
-    return { file, functions, classes, types };
+    return { file, functions, classes, types, imports };
   }
 
   /**

@@ -167,6 +167,7 @@ export class TreeSitterPythonParser extends TreeSitterLanguageParser {
       functions,
       classes,
       types,
+      imports: [],
     };
   }
 
@@ -276,6 +277,7 @@ export class TreeSitterGoParser extends TreeSitterLanguageParser {
       functions,
       classes,
       types,
+      imports: [],
     };
   }
 
@@ -436,6 +438,7 @@ export class TreeSitterRustParser extends TreeSitterLanguageParser {
       functions,
       classes,
       types,
+      imports: [],
     };
   }
 

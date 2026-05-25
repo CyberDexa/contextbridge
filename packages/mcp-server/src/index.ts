@@ -8,7 +8,20 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ContextBridge } from '@contextbridge/sdk';
 
-const repoDir = process.cwd();
+// ─── Resolve repo directory ────────────────────────────────
+// Priority: --repo <path> arg > CONTEXTBRIDGE_REPO env var > process.cwd()
+function resolveRepoDir(): string {
+  const argIdx = process.argv.indexOf('--repo');
+  if (argIdx !== -1 && process.argv[argIdx + 1]) {
+    return process.argv[argIdx + 1];
+  }
+  if (process.env.CONTEXTBRIDGE_REPO) {
+    return process.env.CONTEXTBRIDGE_REPO;
+  }
+  return process.cwd();
+}
+
+const repoDir = resolveRepoDir();
 const bridge = new ContextBridge({ repoDir });
 bridge.initialize();
 

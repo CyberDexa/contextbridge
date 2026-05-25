@@ -4,7 +4,6 @@ import crypto from 'node:crypto';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { AstParser } from './ast-parser.js';
 import { PythonParser, GoParser, RustParser } from './multi-language-parser.js';
-import type { TreeSitterPythonParser, TreeSitterGoParser, TreeSitterRustParser } from './tree-sitter-parser.js';
 import { Storage } from './storage.js';
 import type { ParseResult } from './types.js';
 
@@ -201,6 +200,47 @@ export class Indexer {
           this.storage.upsertType({ ...t, id: `${fileId}:${t.name}`, fileId });
         }
 
+        // ─── Relationships ─────────────────────────────────────
+        // Import relationships: resolve relative paths to indexed file IDs
+        for (const importSpec of result.imports) {
+          if (!importSpec.startsWith('.')) continue; // skip package imports, only relative
+          const resolvedRel = this.resolveImport(relativePath, importSpec);
+          if (resolvedRel && resolvedRel !== fileId) {
+            const targetFile = this.storage.getFileByPath(resolvedRel);
+            if (targetFile) {
+              this.storage.upsertRelationship({
+                id: `${fileId}->imports->${resolvedRel}`,
+                sourceId: fileId,
+                targetId: targetFile.id,
+                relationType: 'imports',
+                metadata: { specifier: importSpec },
+              });
+            }
+          }
+        }
+
+        // Extends / implements relationships for classes
+        for (const cls of result.classes) {
+          if (cls.extendsId) {
+            this.storage.upsertRelationship({
+              id: `${fileId}:${cls.name}->extends->${cls.extendsId}`,
+              sourceId: `${fileId}:${cls.name}`,
+              targetId: cls.extendsId,
+              relationType: 'extends',
+              metadata: {},
+            });
+          }
+          for (const implId of cls.implementsIds) {
+            this.storage.upsertRelationship({
+              id: `${fileId}:${cls.name}->implements->${implId}`,
+              sourceId: `${fileId}:${cls.name}`,
+              targetId: implId,
+              relationType: 'implements',
+              metadata: {},
+            });
+          }
+        }
+
         progress.indexed++;
       } catch (err) {
         console.error(`Error indexing ${filePath}:`, err);
@@ -330,6 +370,35 @@ export class Indexer {
     for (const t of result.types) {
       this.storage.upsertType({ ...t, id: `${fileId}:${t.name}`, fileId });
     }
+
+    // Relationships for incremental index
+    for (const importSpec of result.imports) {
+      if (!importSpec.startsWith('.')) continue;
+      const resolvedRel = this.resolveImport(fileId, importSpec);
+      if (resolvedRel && resolvedRel !== fileId) {
+        const targetFile = this.storage.getFileByPath(resolvedRel);
+        if (targetFile) {
+          this.storage.upsertRelationship({
+            id: `${fileId}->imports->${resolvedRel}`,
+            sourceId: fileId,
+            targetId: targetFile.id,
+            relationType: 'imports',
+            metadata: { specifier: importSpec },
+          });
+        }
+      }
+    }
+    for (const cls of result.classes) {
+      if (cls.extendsId) {
+        this.storage.upsertRelationship({
+          id: `${fileId}:${cls.name}->extends->${cls.extendsId}`,
+          sourceId: `${fileId}:${cls.name}`,
+          targetId: cls.extendsId,
+          relationType: 'extends',
+          metadata: {},
+        });
+      }
+    }
   }
 
   /**
@@ -381,19 +450,89 @@ export class Indexer {
       return content
         .split('\n')
         .map((l) => l.trim())
-        .filter((l) => l && !l.startsWith('#'));
+        .filter((l) => l && !l.startsWith('#') && !l.startsWith('!'));
     } catch {
       return [];
     }
   }
 
-  private shouldIgnore(relativePath: string, gitignore: string[]): boolean {
-    for (const pattern of gitignore) {
-      if (relativePath.startsWith(pattern) || relativePath.includes(pattern)) {
-        return true;
-      }
+  private shouldIgnore(relativePath: string, patterns: string[]): boolean {
+    for (const pattern of patterns) {
+      if (this.matchesGitignorePattern(relativePath, pattern)) return true;
     }
     return false;
+  }
+
+  /**
+   * Match a relative file path against a single gitignore pattern.
+   * Handles: exact names, *.ext, dir/, globstar patterns, and basic path prefixes.
+   */
+  private matchesGitignorePattern(filePath: string, pattern: string): boolean {
+    const isDir = pattern.endsWith('/');
+    const p = isDir ? pattern.slice(0, -1) : pattern;
+
+    // Convert gitignore glob to regex
+    const regexStr = p
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex special chars (not * ?)
+      .replace(/\*\*/g, '\x00GLOBSTAR\x00')  // protect **
+      .replace(/\*/g, '[^/]*')               // * = anything except /
+      .replace(/\?/g, '[^/]')               // ? = single char except /
+      .replace(/\x00GLOBSTAR\x00/g, '.*');   // ** = anything
+
+    const hasSlash = p.includes('/');
+    const segments = filePath.split('/');
+
+    try {
+      const regex = new RegExp(`^${regexStr}$`);
+
+      if (hasSlash) {
+        // Pattern with slash: match from root
+        if (regex.test(filePath)) return true;
+        // Also test as prefix for directory patterns
+        if (isDir) {
+          for (let i = 1; i <= segments.length; i++) {
+            if (regex.test(segments.slice(0, i).join('/'))) return true;
+          }
+        }
+      } else {
+        // No slash: match against any path segment or basename
+        for (const segment of segments) {
+          if (regex.test(segment)) return true;
+        }
+        // Also match against the basename
+        const basename = segments[segments.length - 1];
+        if (regex.test(basename)) return true;
+      }
+    } catch {
+      // Invalid regex fallback: simple substring
+      return filePath.includes(p);
+    }
+
+    return false;
+  }
+
+  /**
+   * Resolve a relative import specifier (e.g. './utils') to a repo-relative file path.
+   * Returns the file path without extension, trying common extensions.
+   */
+  private resolveImport(fromRelative: string, importSpec: string): string | null {
+    const fromDir = path.dirname(fromRelative);
+    const resolved = path.normalize(path.join(fromDir, importSpec));
+
+    // Try common extensions
+    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+    for (const ext of extensions) {
+      const candidate = resolved.endsWith(ext) ? resolved : resolved + ext;
+      if (this.storage.getFileByPath(candidate)) return candidate;
+    }
+
+    // Try index files
+    for (const ext of extensions) {
+      const candidate = path.join(resolved, `index${ext}`);
+      if (this.storage.getFileByPath(candidate)) return candidate;
+    }
+
+    return null;
   }
 
   private detectLanguage(filePath: string): string {

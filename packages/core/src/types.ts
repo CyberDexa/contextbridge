@@ -166,6 +166,8 @@ export interface ParseResult {
   functions: Omit<IndexedFunction, 'id'>[];
   classes: Omit<IndexedClass, 'id'>[];
   types: Omit<IndexedType, 'id'>[];
+  /** Raw module specifiers from import statements (relative paths and package names). */
+  imports: string[];
 }
 
 // ─── Config ────────────────────────────────────────────────

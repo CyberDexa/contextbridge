@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     branches: [main]
 
@@ -54,3 +54,39 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+  smoke:
+    name: Smoke Test (CLI binary)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Create fixture repo
+        run: |
+          mkdir -p /tmp/fixture/src
+          echo 'export function add(a: number, b: number): number { return a + b; }' \
+            > /tmp/fixture/src/math.ts
+          echo 'import { add } from "./math"; export const double = (n: number) => add(n, n);' \
+            > /tmp/fixture/src/utils.ts
+
+      - name: cb init
+        run: cd /tmp/fixture && node $GITHUB_WORKSPACE/packages/cli/dist/index.js init
+
+      - name: cb context
+        run: cd /tmp/fixture && node $GITHUB_WORKSPACE/packages/cli/dist/index.js context "how does add work"
+
+      - name: cb status
+        run: cd /tmp/fixture && node $GITHUB_WORKSPACE/packages/cli/dist/index.js status
+
+      - name: cb graph --stats
+        run: cd /tmp/fixture && node $GITHUB_WORKSPACE/packages/cli/dist/index.js graph --stats

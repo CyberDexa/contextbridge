@@ -129,7 +129,7 @@ export class PythonParser {
       lastIndexedAt: new Date().toISOString(),
     };
 
-    return { file, functions, classes, types };
+    return { file, functions, classes, types, imports: [] };
   }
 
   private getLineNumber(content: string, offset: number): number {
@@ -322,7 +322,7 @@ export class GoParser {
       lastIndexedAt: new Date().toISOString(),
     };
 
-    return { file, functions, classes, types };
+    return { file, functions, classes, types, imports: [] };
   }
 
   private getLineNumber(content: string, offset: number): number {
@@ -539,7 +539,7 @@ export class RustParser {
       lastIndexedAt: new Date().toISOString(),
     };
 
-    return { file, functions, classes, types };
+    return { file, functions, classes, types, imports: [] };
   }
 
   private getLineNumber(content: string, offset: number): number {

@@ -1,0 +1,43 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # needed for npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core (needed by CLI bundle)
+        run: pnpm --filter @contextbridge/core build
+
+      - name: Build sdk (needed by CLI bundle)
+        run: pnpm --filter @contextbridge/sdk build
+
+      - name: Build CLI (tsc + esbuild bundle)
+        run: pnpm --filter @contextbridge/cli build
+
+      - name: Publish @contextbridge/cli
+        run: pnpm --filter @contextbridge/cli publish --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

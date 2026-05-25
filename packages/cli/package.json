@@ -1,6 +1,28 @@
 {
   "name": "@contextbridge/cli",
   "version": "0.1.0",
+  "description": "Context orchestration CLI for AI-assisted development — index your codebase and query it from Cursor, Copilot, and Claude",
+  "license": "MIT",
+  "keywords": ["contextbridge", "ai", "cursor", "copilot", "claude", "mcp", "context", "codebase", "cli"],
+  "homepage": "https://github.com/CyberDexa/contextbridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CyberDexa/contextbridge.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/CyberDexa/contextbridge/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "bin": {
     "cb": "dist/index.js"
   },
@@ -10,16 +32,12 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@contextbridge/core": "workspace:*",
-    "@contextbridge/sdk": "workspace:*",
     "better-sqlite3": "^11.10.0",
-    "chalk": "^5.4.0",
     "chokidar": "^5.0.0",
-    "commander": "^13.0.0",
-    "ora": "^8.2.0",
     "sqlite-vec": "^0.1.9",
     "tree-sitter": "^0.25.0",
     "tree-sitter-go": "^0.25.0",
@@ -27,8 +45,13 @@
     "tree-sitter-rust": "^0.24.0"
   },
   "devDependencies": {
+    "@contextbridge/core": "workspace:*",
+    "@contextbridge/sdk": "workspace:*",
     "@types/node": "^22.0.0",
+    "chalk": "^5.4.0",
+    "commander": "^13.0.0",
     "esbuild": "^0.28.0",
+    "ora": "^8.2.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"
   }

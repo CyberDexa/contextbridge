@@ -23,27 +23,12 @@ importers:
 
   packages/cli:
     dependencies:
-      '@contextbridge/core':
-        specifier: workspace:*
-        version: link:../core
-      '@contextbridge/sdk':
-        specifier: workspace:*
-        version: link:../sdk
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
-      chalk:
-        specifier: ^5.4.0
-        version: 5.6.2
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
-      commander:
-        specifier: ^13.0.0
-        version: 13.1.0
-      ora:
-        specifier: ^8.2.0
-        version: 8.2.0
       sqlite-vec:
         specifier: ^0.1.9
         version: 0.1.9
@@ -60,12 +45,27 @@ importers:
         specifier: ^0.24.0
         version: 0.24.0(tree-sitter@0.25.0)
     devDependencies:
+      '@contextbridge/core':
+        specifier: workspace:*
+        version: link:../core
+      '@contextbridge/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
+      chalk:
+        specifier: ^5.4.0
+        version: 5.6.2
+      commander:
+        specifier: ^13.0.0
+        version: 13.1.0
       esbuild:
         specifier: ^0.28.0
         version: 0.28.0
+      ora:
+        specifier: ^8.2.0
+        version: 8.2.0
       typescript:
         specifier: ^5.8.0
         version: 5.9.3

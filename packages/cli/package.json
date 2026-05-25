@@ -1,5 +1,5 @@
 {
-  "name": "@contextbridge/cli",
+  "name": "@cyberdexa/contextbridge-cli",
   "version": "0.1.0",
   "description": "Context orchestration CLI for AI-assisted development — index your codebase and query it from Cursor, Copilot, and Claude",
   "license": "MIT",
@@ -21,6 +21,8 @@
   },
   "files": [
     "dist",
+    "!dist/__tests__",
+    "!dist/*.cjs",
     "README.md"
   ],
   "bin": {

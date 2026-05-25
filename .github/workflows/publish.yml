@@ -37,7 +37,7 @@ jobs:
       - name: Build CLI (tsc + esbuild bundle)
         run: pnpm --filter @contextbridge/cli build
 
-      - name: Publish @contextbridge/cli
-        run: pnpm --filter @contextbridge/cli publish --no-git-checks --provenance
+      - name: Publish @cyberdexa/contextbridge-cli
+        run: pnpm --filter @cyberdexa/contextbridge-cli publish --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

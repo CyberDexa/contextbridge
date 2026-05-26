@@ -39,6 +39,8 @@ Then plug it into any MCP-compatible AI tool once, and it works everywhere.
 ## Install
 
 ```bash
+npm install -g getcontextbridge
+# or
 npm install -g @cyberdexa/contextbridge-cli
 ```
 

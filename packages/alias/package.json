@@ -1,0 +1,24 @@
+{
+  "name": "getcontextbridge",
+  "version": "0.1.3",
+  "description": "Give your AI coding tools a structural map of your codebase — install alias for @cyberdexa/contextbridge-cli",
+  "keywords": ["contextbridge", "ai", "cursor", "copilot", "claude", "mcp", "context", "codebase", "cli"],
+  "homepage": "https://github.com/CyberDexa/contextbridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CyberDexa/contextbridge.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "cb": "bin/cb.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@cyberdexa/contextbridge-cli": "^0.1.3"
+  }
+}

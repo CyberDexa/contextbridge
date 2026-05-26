@@ -184,7 +184,7 @@ cb init
     "contextbridge": {
       "command": "npx",
       "args": [
-        "contextbridge-mcp",
+        "@cyberdexa/contextbridge-mcp",
         "--repo", "/path/to/your-project"
       ]
     }
@@ -192,7 +192,7 @@ cb init
 }
 ```
 
-> **Note:** The MCP server is bundled with the CLI. The `contextbridge-mcp` binary is installed alongside `cb`. You can also set `CONTEXTBRIDGE_REPO` env var instead of `--repo`.
+> **Note:** You can also set the `CONTEXTBRIDGE_REPO` env var instead of `--repo`. The server reads from the pre-built `.contextbridge/` index — run `cb init` (or `npx @cyberdexa/contextbridge-cli init`) first.
 
 **Available MCP tools:**
 

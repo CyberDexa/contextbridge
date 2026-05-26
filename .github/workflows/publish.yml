@@ -28,16 +28,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build core (needed by CLI bundle)
+      - name: Build core (needed by CLI and MCP bundle)
         run: pnpm --filter @contextbridge/core build
 
-      - name: Build sdk (needed by CLI bundle)
+      - name: Build sdk (needed by CLI and MCP bundle)
         run: pnpm --filter @contextbridge/sdk build
 
       - name: Build CLI (tsc + esbuild bundle)
-        run: pnpm --filter @contextbridge/cli build
+        run: pnpm --filter @cyberdexa/contextbridge-cli build
+
+      - name: Build MCP server (tsc + esbuild bundle)
+        run: pnpm --filter @cyberdexa/contextbridge-mcp build
 
       - name: Publish @cyberdexa/contextbridge-cli
         run: pnpm --filter @cyberdexa/contextbridge-cli publish --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @cyberdexa/contextbridge-mcp
+        run: pnpm --filter @cyberdexa/contextbridge-mcp publish --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

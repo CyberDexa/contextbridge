@@ -1,26 +1,55 @@
 {
-  "name": "@contextbridge/mcp-server",
+  "name": "@cyberdexa/contextbridge-mcp",
   "version": "0.1.0",
-  "private": true,
+  "description": "MCP server for ContextBridge — gives AI tools (Cursor, Claude Desktop, Cline, Codebuff) live structural knowledge of your codebase",
+  "keywords": ["mcp", "contextbridge", "ai", "context", "codebase", "cursor", "claude", "cline", "llm"],
+  "author": "cyberdexa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CyberDexa/contextbridge.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://github.com/CyberDexa/contextbridge#mcp-integration-cursor-claude-desktop-cline-codebuff",
   "type": "module",
   "bin": {
     "contextbridge-mcp": "dist/index.js"
   },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/bundle.mjs",
+    "build:tsc": "tsc",
+    "build:bundle": "node scripts/bundle.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@contextbridge/core": "workspace:*",
-    "@contextbridge/sdk": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.10.0"
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "better-sqlite3": "^11.10.0",
+    "chokidar": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "tree-sitter": "^0.25.0",
+    "tree-sitter-go": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-rust": "^0.24.0"
   },
   "devDependencies": {
+    "@contextbridge/core": "workspace:*",
+    "@contextbridge/sdk": "workspace:*",
     "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"
   }
 }
+

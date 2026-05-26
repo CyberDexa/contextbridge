@@ -175,14 +175,13 @@ export class Indexer {
 
         // Upsert file
         const fileId = relativePath; // Use path as ID
-        this.storage.upsertFile({ ...result.file, id: fileId });
 
-        // Remove old data if file was previously indexed, then re-insert
+        // Remove stale data before re-indexing (cascade-deletes functions/classes/types)
         if (existing) {
           this.storage.deleteFile(fileId);
         }
 
-        // Insert file
+        // Insert the freshly parsed file row
         this.storage.upsertFile({ ...result.file, id: fileId });
 
         // Insert functions

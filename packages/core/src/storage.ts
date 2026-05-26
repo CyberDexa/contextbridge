@@ -23,8 +23,41 @@ export class Storage {
     this.db.pragma('foreign_keys = ON');
   }
 
+  /**
+   * Current schema version. Increment when making incompatible schema changes.
+   * On mismatch the database is wiped and recreated automatically.
+   */
+  private static readonly SCHEMA_VERSION = 2;
+
   initialize(): void {
     if (this.initialized) return;
+
+    // Schema version tracking — auto-wipe on incompatible changes
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER NOT NULL
+      );
+    `);
+
+    const row = this.db
+      .prepare('SELECT version FROM schema_version LIMIT 1')
+      .get() as { version: number } | undefined;
+
+    const currentVersion = row?.version ?? 0; // treat missing row as version 0
+
+    if (currentVersion !== Storage.SCHEMA_VERSION) {
+      // Incompatible schema: wipe all user tables and start fresh
+      this.db.exec(`
+        DROP TABLE IF EXISTS relationships;
+        DROP TABLE IF EXISTS feedback;
+        DROP TABLE IF EXISTS types;
+        DROP TABLE IF EXISTS classes;
+        DROP TABLE IF EXISTS functions;
+        DROP TABLE IF EXISTS files;
+        DELETE FROM schema_version;
+      `);
+      this.db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(Storage.SCHEMA_VERSION);
+    }
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS files (
@@ -57,7 +90,7 @@ export class Storage {
         file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
         methods TEXT DEFAULT '[]',
         properties TEXT DEFAULT '[]',
-        extends_id TEXT REFERENCES classes(id) ON DELETE SET NULL,
+        extends_id TEXT,
         implements_ids TEXT DEFAULT '[]',
         is_exported INTEGER DEFAULT 0
       );
@@ -75,9 +108,7 @@ export class Storage {
         source_id TEXT NOT NULL,
         target_id TEXT NOT NULL,
         relation_type TEXT NOT NULL CHECK(relation_type IN ('calls', 'imports', 'extends', 'implements', 'uses_type', 'has_function', 'has_test')),
-        metadata TEXT DEFAULT '{}',
-        FOREIGN KEY (source_id) REFERENCES files(id) ON DELETE CASCADE,
-        FOREIGN KEY (target_id) REFERENCES files(id) ON DELETE CASCADE
+        metadata TEXT DEFAULT '{}'
       );
 
       CREATE TABLE IF NOT EXISTS feedback (

@@ -1,97 +1,138 @@
 # ContextBridge 🧠
 
-**Context orchestration for AI-assisted development.**
+**Give your AI coding tools a structural map of your codebase.**
 
-ContextBridge sits between your codebase and any AI coding tool (Codebuff, Cursor, Copilot, Claude, Cline, etc.), intelligently curating, retrieving, and injecting the right context at the right time.
+When you ask Claude, Cursor, or Copilot about your codebase, they answer from their training data — not from your actual code. ContextBridge fixes that. It parses your repo into a structured index of functions, classes, types, and their relationships, then serves that knowledge to any AI tool via the MCP protocol or a CLI.
 
-## Why?
+No cloud. No API keys. No embeddings. Runs locally on SQLite in seconds.
 
-Every AI coding tool has the same bottleneck: **context**. The quality of AI output is directly proportional to the quality of context fed into it. Developers today spend more time crafting prompts and manually gathering context than actually producing output.
+---
 
-ContextBridge solves this by becoming the **single source of truth for context** — a platform that indexes your codebase, understands its architecture, and delivers pinpoint-accurate context to any AI tool on demand.
+## The problem
 
-## Features
+AI tools lack your codebase's structure. They don't know:
+- That `processPayment()` is called by three different handlers
+- That your project uses a specific error handling pattern
+- That `UserService` extends `BaseRepository` which is defined elsewhere
+- What your team's naming and file structure conventions are
 
-- **🔍 AST-based indexing** — Parses your code into a rich knowledge graph of functions, classes, types, and their relationships (not just file embeddings)
-- **🌐 Multi-language support** — TypeScript/JavaScript via the TS Compiler API, plus Python, Go, and Rust via regex-based parsers
-- **🎨 Convention detection** — Auto-discovers naming, file structure, testing, and export conventions across your codebase
-- **🏗️ Architecture analysis** — Detects module boundaries, infers architectural patterns (layered, hexagonal, MVC, feature-based), and measures cohesion/coupling
-- **🧠 Knowledge graph** — Builds a graph of files↔functions↔classes↔types with edges for imports, calls, extends, and implements; includes community detection and centrality scoring
-- **🎯 Smart context retrieval** — Given a natural language query, finds the most relevant code entities and synthesizes them into a focused context package
-- **🔄 Incremental indexing** — Only re-indexes files that changed (detected via content hash)
-- **🔌 MCP protocol support** — 8 MCP tools to plug into any MCP-compatible AI tool (Cursor, Codebuff, Claude Desktop, Cline)
-- **📊 Web dashboard** — Interactive D3.js force-directed graph visualization (`cb serve`) with filtering, clustering, and JSON export
-- **💻 Rich CLI interface** — 9 commands: `init`, `context`, `ask`, `what-changed`, `status`, `conventions`, `architecture`, `graph`, `serve`
-- **📈 Feedback loops** — Rate context results to improve relevance over time
-- **🏠 Local-first** — Everything runs on your machine with SQLite, no cloud dependency
+You end up copy-pasting files into prompts and still getting generic answers.
 
-## Quick Start
+## What ContextBridge does
 
-### Installation
+It parses your code (not just greps it) and builds a local knowledge base:
 
-```bash
-# Install globally
-npm install -g @contextbridge/cli
-
-# Or run directly
-npx @contextbridge/cli
+```
+cb init            # parse your whole repo → SQLite index in .contextbridge/
+cb context "..."   # retrieve the most relevant functions/classes for a task
+cb conventions     # detect your codebase's naming, structure, and testing patterns
+cb architecture    # map module boundaries and identify architectural patterns
+cb graph           # visualize the knowledge graph
+cb serve           # open interactive D3.js dashboard at localhost:4620
 ```
 
-### Index your repository
+Then plug it into any MCP-compatible AI tool once, and it works everywhere.
+
+---
+
+## Install
+
+```bash
+npm install -g @cyberdexa/contextbridge-cli
+```
+
+Requires Node.js ≥ 18.
+
+---
+
+## Quick start
 
 ```bash
 cd your-project
 cb init
 ```
 
-Scans your codebase, parses TypeScript/JavaScript/Python/Go/Rust files, and builds a local index in `.contextbridge/`.
-
 ```
-$ cb init
 🔍 ContextBridge — Indexing repository...
-  Directory: /Users/you/your-project
+  Directory: /home/user/your-project
 
 ✅ Done!
-  14 files found
-  14 files indexed
+  247 files found
+  247 files indexed
   0 files skipped (unchanged)
 
 📊 Stats:
-  14 files indexed
-  67 functions
-  5 classes
-  14 types
+  247 files indexed
+  1,840 functions
+  93 classes
+  312 types
 ```
 
-### Get context for a task
+Re-running `cb init` is fast — only changed files are re-indexed.
+
+### Get focused context for a task
 
 ```bash
-cb context "How does the payment flow work?"
-cb context "Explain the authentication architecture" --format prompt
+cb context "How does authentication work?"
+cb context "Where are database queries made?" --format prompt
+cb context "payment flow" --top 5
 ```
 
 ```
-$ cb context "What does the context engine do?"
 📋 Context Package
 ──────────────────────────────────────────────────
-💡 Summary: The ContextEngine class manages context retrieval and synthesis.
+💡 Summary: Found 4 functions and 2 files related to "authentication"
 
-📄 packages/core/src/context-engine.ts
-  • getContext - Main entry point for context retrieval
-  • getFileContext - Get context about a specific file
-  • recordFeedback - Record feedback for learning
+📄 src/auth/middleware.ts
+  • verifyToken — Validates JWT and attaches user to request context
+  • requireAuth — Express middleware wrapping verifyToken
+  • refreshSession — Extends session expiry on valid refresh token
+
+📄 src/auth/jwt.ts
+  • signToken — Signs payload with RS256, 15m expiry
+  • decodeToken — Verifies signature and returns claims
 
 ──────────────────────────────────────────────────
-Token cost: ~850 | Confidence: 87%
-Intent: codebase_exploration
+Token cost: ~620 | Confidence: 91%
 ```
 
-### Interactive mode
+The output is token-efficient and structured — ready to paste directly into any prompt.
+
+### Understand what changed
 
 ```bash
-cb ask
-cb> How do we handle error states?
+cb what-changed           # vs last commit
+cb what-changed --since HEAD~5
+cb what-changed --since "2 days ago"
 ```
+
+Produces a context package for only the changed code — useful for generating PR descriptions or telling an AI what's new.
+
+### Detect conventions
+
+```bash
+cb conventions
+```
+
+```
+🎨 Codebase Conventions
+──────────────────────────────────────────────────
+
+📁 Naming
+  HIGH camelCase functions
+  HIGH PascalCase classes
+  MED  UPPER_CASE constants
+
+📁 File Structure
+  HIGH src directory pattern
+  MED  __tests__ co-location
+
+📁 Testing
+  HIGH *.test.ts naming
+  MED  describe/it blocks
+```
+
+Feed this to an AI when asking it to add new code — it will follow your actual conventions.
 
 ### Analyze architecture
 
@@ -100,293 +141,171 @@ cb architecture
 ```
 
 ```
-$ cb architecture
 🏗️  Architecture Analysis
-──────────────────────────────────────────────────────────
 
-📦 Module Boundaries (4)
+📦 Module Boundaries (5)
 
-  packages/core
-    Path:     .
-    Files:    10
-    Cohesion: 72% (higher = tighter)
-    Coupling: 18% (lower = more independent)
-    Sub:      packages/core/src, packages/core/src/__tests__
+  src/auth     Cohesion: 81%   Coupling: 12%
+  src/api      Cohesion: 74%   Coupling: 23%
+  src/db       Cohesion: 68%   Coupling: 31%
 
-  packages/cli
-    Path:     .
-    Files:    3
-    Cohesion: 45%
-    Coupling: 35%
-
-🧩 Architectural Patterns (2)
-
-  HIGH Monorepo (layered)
-       Packages are organized in a layered structure with clear boundaries.
-       Evidence: core → sdk → cli/mcp-server
-
-  HIGH Feature-based (feature-based)
-       Directory structure groups code by feature domain.
-       Evidence: packages/core/src, packages/cli/src, packages/mcp-server/src
+🧩 Patterns
+  HIGH Layered architecture
+  MED  Repository pattern
 ```
 
-### Detect conventions
-
-```bash
-cb conventions
-cb conventions --category naming --verbose
-```
-
-```
-$ cb conventions
-🎨 Codebase Conventions
-──────────────────────────────────────────────────────────
-
-📁 Naming
-  HIGH camelCase functions
-       camelCase is used for function, method, and variable names
-       💡 Consider PascalCase for class names and UPPER_CASE for constants
-  HIGH PascalCase classes
-       PascalCase is used for class and interface names
-
-📁 File Structure
-  MED  src directory pattern
-       Source files are organized under a src/ directory
-  MED  __tests__ co-location
-       Tests are placed in __tests__ directories adjacent to source files
-
-📁 Testing
-  HIGH *.test.ts naming
-       Test files follow the *.test.ts naming convention
-```
-
-### Explore the knowledge graph
+### Visualize the knowledge graph
 
 ```bash
 cb graph --stats
-cb graph --json -o graph.json
+cb serve                   # interactive D3.js graph at http://localhost:4620
 cb graph --dot -o graph.dot
+cb graph --json -o graph.json
 ```
 
-```
-$ cb graph --stats
-📊 Knowledge Graph Stats
+---
 
-  Nodes:  89
-  Edges:  156
-  Clusters: 4
-  Avg Degree: 3.5
+## MCP integration (Cursor, Claude Desktop, Cline, Codebuff)
 
-  Node Types:
-    file: 14
-    function: 67
-    class: 5
-    type: 14
+This is the main event. Configure ContextBridge once and every MCP-compatible tool gets live access to your codebase index.
 
-  Edge Types:
-    defines: 86
-    calls: 42
-    imports: 24
-    implements: 3
-    extends: 1
-```
-
-### Launch the dashboard
+**Step 1 — index your repo** (run once, then on demand):
 
 ```bash
-cb serve
-# Open http://localhost:4620 in your browser
+cd /path/to/your-project
+cb init
 ```
 
-The dashboard provides an interactive D3.js force-directed graph visualization with node filtering, radial layout, cluster highlighting, drag-drop JSON loading, and PNG export.
-
-### Check index status
-
-```bash
-cb status
-cb status --conventions
-```
-
-```
-$ cb status
-📊 ContextBridge Status
-
-  Files:     14
-  Functions: 67
-  Classes:   5
-  Types:     14
-  DB Size:   108.0 KB
-```
-
-### MCP Server (for AI tool integration)
-
-```bash
-npx @contextbridge/mcp-server
-```
-
-Then configure in any MCP-compatible client:
+**Step 2 — add to your MCP client config:**
 
 ```json
 {
   "mcpServers": {
     "contextbridge": {
       "command": "npx",
-      "args": ["@contextbridge/mcp-server"]
+      "args": [
+        "contextbridge-mcp",
+        "--repo", "/path/to/your-project"
+      ]
     }
   }
 }
 ```
 
-Available MCP tools:
-- `get_context` — Get context about the codebase for any query
-- `get_file_context` — Deep context for a specific file
-- `get_recent_changes` — What changed recently
-- `find_related` — Find related entities
-- `index_repo` — Index or re-index
-- `detect_conventions` — Detect coding conventions (naming, file structure, testing)
-- `analyze_architecture` — Analyze module boundaries and architectural patterns
-- `get_graph` — Retrieve knowledge graph (summary, JSON, or DOT format)
+> **Note:** The MCP server is bundled with the CLI. The `contextbridge-mcp` binary is installed alongside `cb`. You can also set `CONTEXTBRIDGE_REPO` env var instead of `--repo`.
 
-## SDK Usage
+**Available MCP tools:**
+
+| Tool | What it does |
+|---|---|
+| `get_context` | Context for any natural language query |
+| `get_file_context` | Deep context for a specific file |
+| `get_recent_changes` | Context for what's changed (git-aware) |
+| `find_related` | Find entities related to a given name |
+| `index_repo` | Trigger a re-index |
+| `detect_conventions` | Return convention report |
+| `analyze_architecture` | Return module boundaries and patterns |
+| `get_graph` | Return graph as summary, JSON, or DOT |
+
+Once configured, you can ask your AI tool: *"Follow our existing conventions and add an endpoint like the others in src/api"* — and it will know what "our conventions" and "the others" means.
+
+---
+
+## SDK usage (programmatic)
+
+The SDK is included in the CLI package and can be used directly in Node.js projects that depend on ContextBridge as a library:
 
 ```typescript
-import { ContextBridge } from '@contextbridge/sdk';
+import { ContextBridge } from '@cyberdexa/contextbridge-cli/sdk';
 
 const bridge = new ContextBridge({ repoDir: '/path/to/repo' });
 bridge.initialize();
-bridge.index();
+await bridge.index();
 
-// Context retrieval
-const result = bridge.getContext({
-  query: 'How does the payment flow work?'
-});
+// Query
+const result = bridge.getContext('how does auth work');
 console.log(result.summary);
-console.log(result.sections);
 
-// Convention detection
-const report = bridge.detectConventions();
-console.log(report.conventions);
+// Conventions
+const conventions = bridge.detectConventions();
 
-// Architecture analysis
-const arch = bridge.analyzeArchitecture();
-console.log(arch.modules, arch.concepts);
+// Architecture
+const { modules, concepts } = bridge.analyzeArchitecture();
 
 // Knowledge graph
-const graph = bridge.getKnowledgeGraph();
-console.log(graph.nodes, graph.edges, graph.clusters);
+const { nodes, edges, clusters } = bridge.getKnowledgeGraph();
 
 // Dashboard server
 const server = bridge.serve(4620);
-// → http://localhost:4620
 
 bridge.close();
 ```
 
-## Architecture
+---
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   CLIENTS                            │
-│  CLI (terminal)  │  MCP Clients  │  API / SDKs      │
-└──────────┬──────────────────────────┬──────────────┘
-           │                          │
-┌──────────▼──────────────────────────▼──────────────┐
-│              CONTEXT API GATEWAY                    │
-│  @contextbridge/sdk (ContextBridge class)           │
-└──────────┬──────────────────────────┬──────────────┘
-           │                          │
-┌──────────▼──────────┐  ┌───────────▼──────────────┐
-│   CONTEXT ENGINE    │  │   FEEDBACK ENGINE        │
-│  (Retrieval +       │  │  (Track outcomes,        │
-│   Ranking +         │  │   learn what worked)     │
-│   Synthesis)        │  │                          │
-└──────────┬──────────┘  └───────────┬──────────────┘
-           │                          │
-┌──────────▼──────────────────────────▼──────────────┐
-│              KNOWLEDGE GRAPH                       │
-│  (Code entities, relationships, conventions,       │
-│   architectural patterns, domain concepts)         │
-├─────────────────────────────────────────────────────┤
-│  Convention       │  Architecture   │  Multi-lang   │
-│  Detector          │  Analyzer       │  Parser       │
-│  (naming, file     │  (modules,      │  (TS, Python, │
-│   structure,       │   patterns,     │   Go, Rust)   │
-│   testing)         │   cohesion)     │               │
-└──────────┬──────────────────────────┬──────────────┘
-           │                          │
-┌──────────▼──────────┐  ┌───────────▼──────────────┐
-│   INDEXER SERVICE   │  │   INTEGRATION BUS        │
-│  (File watcher,     │  │  (Git, Slack, Notion,    │
-│   parser, embedder) │  │   Jira, Linear, etc.)    │
-└──────────────────────┘  └──────────────────────────┘
-```
+## How it works
 
-## Project Structure
+ContextBridge does not use embeddings or LLMs. Everything is local:
+
+1. **Parse** — TypeScript/JavaScript via the TS Compiler API. Python, Go, and Rust via regex-based parsers (+ optional tree-sitter for precise AST on Node 18–22).
+2. **Store** — Functions, classes, types, and relationships are written to a local SQLite database in `.contextbridge/`.
+3. **Retrieve** — Keyword scoring against names, signatures, and doc comments, boosted by structural signals (exports, complexity, relationships).
+4. **Serve** — MCP tools and CLI commands query the same database.
+
+The `.contextbridge/` directory should be added to `.gitignore`.
+
+---
+
+## Project structure
 
 ```
 contextbridge/
 ├── packages/
-│   ├── core/           # Core engine: indexing, storage, context retrieval
-│   │   ├── src/
-│   │   │   ├── ast-parser.ts              # TS/JS AST parser
-│   │   │   ├── multi-language-parser.ts   # Python, Go, Rust parsers
-│   │   │   ├── context-engine.ts          # Context retrieval & synthesis
-│   │   │   ├── convention-detector.ts     # Convention auto-discovery
-│   │   │   ├── architecture-analyzer.ts   # Module boundaries & patterns
-│   │   │   ├── knowledge-graph.ts         # Graph builder & clusterer
-│   │   │   ├── dashboard.html             # D3.js visualization dashboard
-│   │   │   ├── indexer.ts                 # File indexing engine
-│   │   │   ├── storage.ts                 # SQLite persistence layer
-│   │   │   ├── types.ts                   # Shared type definitions
-│   │   │   └── index.ts                   # Public API exports
-│   │   └── src/__tests__/                 # 7 test suites (146 tests)
-│   ├── cli/            # CLI: 9 commands (init, context, ask, what-changed,
-│   │                   #   status, conventions, architecture, graph, serve)
-│   ├── mcp-server/     # MCP protocol server (8 tools) for AI tool integration
-│   └── sdk/            # Node.js SDK for programmatic use + HTTP dashboard server
-├── docs/plans/         # Design documents
-└── package.json        # Monorepo root (pnpm workspaces + Turborepo)
+│   ├── core/           # Indexer, storage, context engine, parsers, graph
+│   ├── cli/            # 9 CLI commands — published as @cyberdexa/contextbridge-cli
+│   ├── mcp-server/     # MCP server (8 tools) — bundled into the CLI package
+│   └── sdk/            # ContextBridge class — bundled into the CLI package
+└── docs/plans/
 ```
 
-## Tech Stack
+## Tech stack
 
-- **Runtime:** Node.js ≥ 22
-- **Language:** TypeScript 5.8
-- **Monorepo:** pnpm workspaces + Turborepo
-- **Storage:** SQLite (better-sqlite3) with WAL mode
-- **AST Parsing:** TypeScript Compiler API + regex-based multi-language parsers
-- **Visualization:** D3.js force-directed graph (dashboard)
-- **CLI:** Commander.js + chalk
-- **MCP:** @modelcontextprotocol/sdk
-- **Testing:** Vitest (146 tests across 10 test suites)
+- **Node.js** ≥ 18 · **TypeScript** 5.8
+- **SQLite** via `better-sqlite3` (WAL mode, local-first)
+- **TS Compiler API** for TypeScript/JavaScript AST parsing
+- **Regex parsers** for Python, Go, Rust (optional tree-sitter for richer AST)
+- **D3.js** force-directed graph (dashboard)
+- **Commander.js** + chalk (CLI)
+- **@modelcontextprotocol/sdk** (MCP server)
+- **Vitest** — 146 tests across 10 suites
+
+---
 
 ## Roadmap
 
-### Phase 1 (MVP) ✅
-- [x] Local-first CLI with SQLite storage
-- [x] TS/JS AST parser (functions, classes, types)
-- [x] Basic context retrieval engine
-- [x] MCP server for AI tool integration
-- [x] Feedback tracking
-- [x] Git integration (`cb what-changed`)
+### Done ✅
+- Local-first CLI with SQLite storage
+- TS/JS AST parsing (functions, classes, types, imports)
+- Python, Go, Rust parsing (regex + optional tree-sitter)
+- Context retrieval with keyword scoring
+- Convention detection (naming, file structure, testing patterns)
+- Architecture analysis (module boundaries, cohesion/coupling, pattern detection)
+- Knowledge graph (nodes, edges, clusters, centrality)
+- D3.js web dashboard (`cb serve`)
+- MCP server with 8 tools
+- Git-aware context (`cb what-changed`)
+- Incremental indexing (content-hash based)
+- File watching (`cb init --watch`)
+- Schema versioning with auto-migration
 
-### Phase 2 (Complete) ✅
-- [x] Multi-language support (Python, Go, Rust via regex-based parsers)
-- [x] Convention detection (naming, file structure, testing patterns)
-- [x] Architecture analysis (module boundaries, patterns, cohesion/coupling)
-- [x] Knowledge graph (nodes, edges, clusters, community detection)
-- [x] Web UI dashboard (D3.js force-directed graph + `cb serve`)
-- [x] 146 tests across 10 test suites (core: 7, cli: 1, mcp-server: 1, sdk: 1)
-- [x] CLI commands: `cb conventions`, `cb architecture`, `cb graph`, `cb serve`
-- [x] MCP tools: `detect_conventions`, `analyze_architecture`, `get_graph`
+### Planned
+- Vector embeddings for semantic retrieval (complement keyword scoring)
+- Cloud sync for team-shared indexes
+- VS Code extension
+- JetBrains plugin
+- GitHub Actions integration
 
-### Phase 3 (Planned)
-- [ ] Tree-sitter integration for precise multi-language AST parsing
-- [ ] Cloud sync & team workspaces
-- [ ] IDE extensions (VS Code, JetBrains)
-- [ ] Integration bus (Slack, Notion, Jira, Linear)
-- [ ] Enterprise features (SSO, audit, RBAC)
-- [ ] File watching for auto re-indexing
+---
 
 ## License
 

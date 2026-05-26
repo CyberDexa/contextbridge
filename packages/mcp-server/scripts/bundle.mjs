@@ -34,7 +34,7 @@ await esbuild.build({
   target: 'node18',
   format: 'cjs',
   outfile: bundleFile,
-  // Native modules and optional tree-sitter stay external
+  // Native modules and optional modules stay external
   external: [
     'better-sqlite3',
     'sqlite-vec',
@@ -43,6 +43,8 @@ await esbuild.build({
     'tree-sitter-go',
     'tree-sitter-rust',
     'chokidar',
+    '@xenova/transformers',
+    'onnxruntime-node',
     '*/tree-sitter-parser.js',
   ],
   // Resolve workspace packages from their built dist dirs

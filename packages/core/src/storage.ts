@@ -27,7 +27,7 @@ export class Storage {
    * Current schema version. Increment when making incompatible schema changes.
    * On mismatch the database is wiped and recreated automatically.
    */
-  private static readonly SCHEMA_VERSION = 2;
+  private static readonly SCHEMA_VERSION = 3;
 
   initialize(): void {
     if (this.initialized) return;
@@ -48,6 +48,7 @@ export class Storage {
     if (currentVersion !== Storage.SCHEMA_VERSION) {
       // Incompatible schema: wipe all user tables and start fresh
       this.db.exec(`
+        DROP TABLE IF EXISTS embeddings;
         DROP TABLE IF EXISTS relationships;
         DROP TABLE IF EXISTS feedback;
         DROP TABLE IF EXISTS types;
@@ -128,6 +129,12 @@ export class Storage {
       CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_id);
       CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relation_type);
       CREATE INDEX IF NOT EXISTS idx_feedback_context ON feedback(context_id);
+
+      CREATE TABLE IF NOT EXISTS embeddings (
+        entity_id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        embedding BLOB NOT NULL
+      );
     `);
 
     this.initialized = true;
@@ -218,6 +225,13 @@ export class Storage {
     return rows.map((r) => this.rowToFunction(r));
   }
 
+  getFunctionById(id: string): IndexedFunction | null {
+    const row = this.db
+      .prepare('SELECT * FROM functions WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? this.rowToFunction(row) : null;
+  }
+
   getAllFunctions(): IndexedFunction[] {
     const rows = this.db.prepare('SELECT * FROM functions').all() as Record<string, unknown>[];
     return rows.map((r) => this.rowToFunction(r));
@@ -249,6 +263,11 @@ export class Storage {
     const rows = this.db
       .prepare('SELECT * FROM classes WHERE file_id = ?')
       .all(fileId) as Record<string, unknown>[];
+    return rows.map((r) => this.rowToClass(r));
+  }
+
+  getAllClasses(): IndexedClass[] {
+    const rows = this.db.prepare('SELECT * FROM classes').all() as Record<string, unknown>[];
     return rows.map((r) => this.rowToClass(r));
   }
 
@@ -412,6 +431,47 @@ export class Storage {
     const classCount = (this.db.prepare('SELECT COUNT(*) as count FROM classes').get() as { count: number }).count;
     const typeCount = (this.db.prepare('SELECT COUNT(*) as count FROM types').get() as { count: number }).count;
     return { fileCount, functionCount, classCount, typeCount };
+  }
+
+  // ─── Embeddings ──────────────────────────────────────────
+
+  upsertEmbedding(entityId: string, entityType: string, embedding: Float32Array): void {
+    this.db
+      .prepare(
+        'INSERT INTO embeddings (entity_id, entity_type, embedding) VALUES (?, ?, ?) ON CONFLICT(entity_id) DO UPDATE SET embedding = excluded.embedding, entity_type = excluded.entity_type',
+      )
+      .run(entityId, entityType, Buffer.from(embedding.buffer));
+  }
+
+  /** Returns all stored embeddings. Use for in-process cosine similarity search. */
+  getAllEmbeddings(): { entityId: string; entityType: string; embedding: Float32Array }[] {
+    const rows = this.db
+      .prepare('SELECT entity_id, entity_type, embedding FROM embeddings')
+      .all() as { entity_id: string; entity_type: string; embedding: Buffer }[];
+    return rows.map((r) => ({
+      entityId: r.entity_id,
+      entityType: r.entity_type,
+      embedding: new Float32Array(r.embedding.buffer, r.embedding.byteOffset, r.embedding.byteLength / 4),
+    }));
+  }
+
+  hasEmbeddings(): boolean {
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM embeddings').get() as { count: number };
+    return row.count > 0;
+  }
+
+  deleteEmbeddingsForFile(fileId: string): void {
+    // Delete embeddings for all functions/classes belonging to this file.
+    const fnIds = this.db
+      .prepare('SELECT id FROM functions WHERE file_id = ?')
+      .all(fileId) as { id: string }[];
+    const clsIds = this.db
+      .prepare('SELECT id FROM classes WHERE file_id = ?')
+      .all(fileId) as { id: string }[];
+    const ids = [...fnIds, ...clsIds].map((r) => r.id);
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => '?').join(', ');
+    this.db.prepare(`DELETE FROM embeddings WHERE entity_id IN (${placeholders})`).run(...ids);
   }
 
   // ─── Close ───────────────────────────────────────────────

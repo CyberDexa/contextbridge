@@ -167,7 +167,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const query = String(args?.query || '');
       const maxTokens = Number(args?.max_tokens) || 4000;
 
-      const result = bridge.getContext({
+      const result = await bridge.getContext({
         query,
         maxTokens,
         format: 'prompt',
@@ -231,7 +231,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case 'find_related': {
       const query = String(args?.query || '');
-      const result = bridge.getContext({ query, format: 'prompt' });
+      const result = await bridge.getContext({ query, format: 'prompt' });
 
       if (result.sections.length === 0) {
         return {

@@ -64,6 +64,8 @@ export interface ContextQuery {
   };
   format?: 'prompt' | 'structured' | 'minimal';
   maxTokens?: number;
+  /** Use semantic (vector) search in addition to keyword search. Requires embeddings to be generated first. */
+  semantic?: boolean;
 }
 
 export interface ContextSection {

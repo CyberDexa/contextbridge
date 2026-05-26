@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { Storage } from './storage.js';
+import type { SemanticEmbedder } from './semantic-embedder.js';
 import type {
   ContextQuery,
   ContextResult,
@@ -11,12 +12,13 @@ import type {
 } from './types.js';
 
 export class ContextEngine {
-  constructor(private storage: Storage) {}
+  constructor(private storage: Storage, private embedder?: SemanticEmbedder) {}
 
   /**
-   * Retrieve context for a given query. This is the main entry point.
+   * Retrieve context for a given query.
+   * When query.semantic is true (and embeddings exist), uses hybrid keyword + vector scoring.
    */
-  getContext(query: ContextQuery): ContextResult {
+  async getContext(query: ContextQuery): Promise<ContextResult> {
     const startTime = performance.now();
     const sections: ContextSection[] = [];
     const entitiesFound: string[] = [];
@@ -26,8 +28,23 @@ export class ContextEngine {
     const maxTokens = query.maxTokens || 4000;
     let totalTokens = 0;
 
-    // 1. Search for matching functions
-    const functions = this.storage.searchFunctions(queryStr, 10);
+    // Decide whether to augment with semantic results
+    const useSemantic =
+      query.semantic !== false &&
+      this.embedder?.isAvailable &&
+      this.storage.hasEmbeddings();
+
+    // 1. Keyword search for functions
+    let functions = this.storage.searchFunctions(queryStr, useSemantic ? 8 : 10);
+
+    // 1b. Semantic search — embed the query and find nearest neighbours by cosine similarity
+    if (useSemantic && this.embedder) {
+      const semanticFunctions = await this.semanticSearchFunctions(query.query, 8);
+      // Merge: union by id, deduplicate, prefer entries that appear in both lists
+      const merged = this.mergeFunctionResults(functions, semanticFunctions);
+      functions = merged.slice(0, 10);
+    }
+
     if (functions.length > 0) {
       entitiesFound.push(...functions.map((f) => f.fullName));
       const section = this.buildFunctionSection(functions, queryStr);
@@ -71,7 +88,6 @@ export class ContextEngine {
     // 4. Build summary
     const summary = this.buildSummary(query.query, sections, functions);
 
-    const elapsed = performance.now() - startTime;
     const contextId = crypto.randomUUID();
 
     return {
@@ -85,6 +101,69 @@ export class ContextEngine {
         confidence: sections.length > 0 ? Math.min(sections.length / 3, 1) : 0,
       },
     };
+  }
+
+  /**
+   * Embed the query and return the most similar functions by cosine similarity.
+   */
+  private async semanticSearchFunctions(query: string, limit: number): Promise<IndexedFunction[]> {
+    if (!this.embedder) return [];
+    let queryVec: Float32Array;
+    try {
+      queryVec = await this.embedder.embed(query);
+    } catch {
+      return [];
+    }
+
+    const allEmbeddings = this.storage.getAllEmbeddings();
+    const fnEmbeddings = allEmbeddings.filter((e) => e.entityType === 'function');
+
+    // Compute cosine similarity scores
+    const { SemanticEmbedder } = await import('./semantic-embedder.js');
+    const scored = fnEmbeddings.map((e) => ({
+      entityId: e.entityId,
+      score: SemanticEmbedder.cosineSimilarity(queryVec, e.embedding),
+    }));
+
+    // Sort descending, take top-N
+    scored.sort((a, b) => b.score - a.score);
+    const topIds = scored.slice(0, limit).map((s) => s.entityId);
+
+    // Fetch the actual function objects
+    return topIds
+      .map((id) => this.storage.getFunctionById(id))
+      .filter((fn): fn is IndexedFunction => fn !== null);
+  }
+
+  /**
+   * Merge keyword results and semantic results, deduplicating by id.
+   * Entities present in both lists are ranked first.
+   */
+  private mergeFunctionResults(
+    keyword: IndexedFunction[],
+    semantic: IndexedFunction[],
+  ): IndexedFunction[] {
+    const seen = new Set<string>();
+    const both: IndexedFunction[] = [];
+    const keywordOnly: IndexedFunction[] = [];
+    const semanticOnly: IndexedFunction[] = [];
+
+    const semanticIds = new Set(semantic.map((f) => f.id));
+    const keywordIds = new Set(keyword.map((f) => f.id));
+
+    for (const fn of keyword) {
+      if (seen.has(fn.id)) continue;
+      seen.add(fn.id);
+      if (semanticIds.has(fn.id)) both.push(fn);
+      else keywordOnly.push(fn);
+    }
+    for (const fn of semantic) {
+      if (seen.has(fn.id)) continue;
+      seen.add(fn.id);
+      if (!keywordIds.has(fn.id)) semanticOnly.push(fn);
+    }
+
+    return [...both, ...keywordOnly, ...semanticOnly];
   }
 
   /**

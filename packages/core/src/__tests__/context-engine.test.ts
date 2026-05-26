@@ -88,33 +88,33 @@ describe('ContextEngine', () => {
   });
 
   describe('getContext', () => {
-    it('returns context for auth-related query', () => {
-      const result = engine.getContext({ query: 'authentication' });
+    it('returns context for auth-related query', async () => {
+      const result = await engine.getContext({ query: 'authentication' });
       expect(result.sections.length).toBeGreaterThan(0);
       expect(result.summary).toContain('authentication');
       expect(result.queryMetadata.entitiesFound.length).toBeGreaterThan(0);
     });
 
-    it('returns context for payment-related query', () => {
-      const result = engine.getContext({ query: 'payment' });
+    it('returns context for payment-related query', async () => {
+      const result = await engine.getContext({ query: 'payment' });
       expect(result.sections.length).toBeGreaterThan(0);
       expect(result.id).toBeTruthy();
     });
 
-    it('returns empty result for unknown query', () => {
-      const result = engine.getContext({ query: 'xzjklqwerty' });
+    it('returns empty result for unknown query', async () => {
+      const result = await engine.getContext({ query: 'xzjklqwerty' });
       expect(result.sections.length).toBe(0);
       expect(result.summary).toContain('No context found');
     });
 
-    it('respects maxTokens limit', () => {
-      const result = engine.getContext({ query: 'auth', maxTokens: 1 });
+    it('respects maxTokens limit', async () => {
+      const result = await engine.getContext({ query: 'auth', maxTokens: 1 });
       // With maxTokens=1, sections will be aggressively limited
       expect(result.tokenCost).toBeGreaterThanOrEqual(0);
     });
 
-    it('interprets intent correctly', () => {
-      const result = engine.getContext({ query: 'How does auth work?' });
+    it('interprets intent correctly', async () => {
+      const result = await engine.getContext({ query: 'How does auth work?' });
       expect(result.queryMetadata.interpretedIntent).toContain('Understanding');
     });
   });
@@ -142,8 +142,8 @@ describe('ContextEngine', () => {
   });
 
   describe('buildSummary', () => {
-    it('returns helpful message when no context found', () => {
-      const result = engine.getContext({ query: 'xyznonexistent' });
+    it('returns helpful message when no context found', async () => {
+      const result = await engine.getContext({ query: 'xyznonexistent' });
       expect(result.summary).toContain('Try rephrasing');
     });
   });

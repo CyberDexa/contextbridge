@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
-import { ContextEngine, Indexer, Storage, AstParser, ConventionDetector, ArchitectureAnalyzer, KnowledgeGraph } from '@contextbridge/core';
+import { ContextEngine, Indexer, Storage, AstParser, ConventionDetector, ArchitectureAnalyzer, KnowledgeGraph, SemanticEmbedder } from '@contextbridge/core';
 import type {
   ContextQuery,
   ContextResult,
@@ -35,6 +35,7 @@ export class ContextBridge {
   private engine: ContextEngine;
   private parser: AstParser;
   private config: Required<ContextBridgeConfig>;
+  private embedder: SemanticEmbedder;
 
   constructor(config: ContextBridgeConfig) {
     this.config = {
@@ -47,8 +48,9 @@ export class ContextBridge {
 
     this.parser = new AstParser();
     this.storage = new Storage(this.config.repoDir);
+    this.embedder = new SemanticEmbedder();
     this.indexer = new Indexer(this.storage, this.parser);
-    this.engine = new ContextEngine(this.storage);
+    this.engine = new ContextEngine(this.storage, this.embedder);
   }
 
   /**
@@ -62,16 +64,27 @@ export class ContextBridge {
    * Index the current repository.
    * Set options.watch to true for file watching.
    * Set options.useTreeSitter to true for tree-sitter AST parsers.
+   * Set options.semantic to true to generate embeddings (requires @xenova/transformers).
    */
-  async index(options?: { watch?: boolean; useTreeSitter?: boolean }): Promise<{ total: number; indexed: number; skipped: number; errors: number }> {
-    return this.indexer.indexRepo(this.config.repoDir, options);
+  async index(options?: { watch?: boolean; useTreeSitter?: boolean; semantic?: boolean }): Promise<{ total: number; indexed: number; skipped: number; errors: number }> {
+    if (options?.semantic) {
+      await this.embedder.tryInitialize();
+    }
+    return this.indexer.indexRepo(this.config.repoDir, {
+      ...options,
+      embedder: options?.semantic ? this.embedder : undefined,
+    });
   }
 
   /**
-   * Get context for a query.
+   * Get context for a query. Uses hybrid keyword + vector search when embeddings are available.
    */
-  getContext(query: string | ContextQuery): ContextResult {
+  async getContext(query: string | ContextQuery): Promise<ContextResult> {
     const queryObj: ContextQuery = typeof query === 'string' ? { query } : query;
+    // Auto-enable semantic if embedder is initialized and embeddings exist
+    if (this.embedder.isAvailable && this.storage.hasEmbeddings()) {
+      queryObj.semantic = queryObj.semantic !== false;
+    }
     return this.engine.getContext(queryObj);
   }
 

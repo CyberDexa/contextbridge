@@ -1,6 +1,6 @@
 {
   "name": "@cyberdexa/contextbridge-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for ContextBridge — gives AI tools (Cursor, Claude Desktop, Cline, Codebuff) live structural knowledge of your codebase",
   "keywords": ["mcp", "contextbridge", "ai", "context", "codebase", "cursor", "claude", "cline", "llm"],
   "author": "cyberdexa",
@@ -38,6 +38,7 @@
     "chokidar": "^5.0.0"
   },
   "optionalDependencies": {
+    "@xenova/transformers": "^2.17.2",
     "tree-sitter": "^0.25.0",
     "tree-sitter-go": "^0.25.0",
     "tree-sitter-python": "^0.25.0",

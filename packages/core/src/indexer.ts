@@ -5,6 +5,7 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { AstParser } from './ast-parser.js';
 import { PythonParser, GoParser, RustParser } from './multi-language-parser.js';
 import { Storage } from './storage.js';
+import type { SemanticEmbedder } from './semantic-embedder.js';
 import type { ParseResult } from './types.js';
 
 export interface IndexOptions {
@@ -12,6 +13,10 @@ export interface IndexOptions {
   concurrency?: number;
   /** Use tree-sitter parsers for Python, Go, and Rust (more precise, requires native deps). */
   useTreeSitter?: boolean;
+  /** Generate embeddings for functions and classes (requires @xenova/transformers). */
+  semantic?: boolean;
+  /** Pre-initialized SemanticEmbedder instance — only used when semantic is true. */
+  embedder?: SemanticEmbedder;
 }
 
 export interface IndexProgress {
@@ -249,12 +254,64 @@ export class Indexer {
 
     this._isIndexing = false;
 
+    // ─── Semantic embedding pass ────────────────────────────
+    if (options?.semantic && options.embedder?.isAvailable) {
+      await this.generateEmbeddings(options.embedder, progress);
+    }
+
     // Start file watcher if requested
     if (options?.watch) {
       this.startWatching(repoDir);
     }
 
     return progress;
+  }
+
+  // ─── Semantic Embedding Generation ─────────────────────
+
+  /**
+   * Generate and store embeddings for all functions and classes in the database.
+   * Called automatically after `indexRepo` when `options.semantic` is true.
+   * Reports progress via `progress.indexed` (re-uses the counter for display convenience).
+   */
+  private async generateEmbeddings(embedder: SemanticEmbedder, progress: IndexProgress): Promise<void> {
+    const { SemanticEmbedder: SE } = await import('./semantic-embedder.js');
+
+    const functions = this.storage.getAllFunctions();
+    const classes = this.storage.getAllClasses();
+
+    let done = 0;
+    const total = functions.length + classes.length;
+
+    for (const fn of functions) {
+      try {
+        const text = SE.functionText(fn.name, fn.signature, fn.docComment);
+        const vec = await embedder.embed(text);
+        this.storage.upsertEmbedding(fn.id, 'function', vec);
+      } catch {
+        // Silently skip individual failures — network/ONNX issues shouldn't abort the whole pass
+      }
+      done++;
+      if (done % 50 === 0) {
+        process.stderr.write(`\r  Embedding ${done}/${total} entities...`);
+      }
+    }
+
+    for (const cls of classes) {
+      try {
+        const text = SE.classText(cls.name, cls.methods);
+        const vec = await embedder.embed(text);
+        this.storage.upsertEmbedding(cls.id, 'class', vec);
+      } catch {
+        // Silently skip
+      }
+      done++;
+      if (done % 50 === 0) {
+        process.stderr.write(`\r  Embedding ${done}/${total} entities...`);
+      }
+    }
+
+    if (total > 0) process.stderr.write(`\r  Embedded ${total} entities.       \n`);
   }
 
   // ─── File Watching ──────────────────────────────────────

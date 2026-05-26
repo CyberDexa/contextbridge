@@ -6,6 +6,8 @@ export { ConventionDetector } from './convention-detector.js';
 export { PythonParser, GoParser, RustParser } from './multi-language-parser.js';
 export { ArchitectureAnalyzer } from './architecture-analyzer.js';
 export { KnowledgeGraph } from './knowledge-graph.js';
+export { SemanticEmbedder } from './semantic-embedder.js';
+export type { EmbeddingVector } from './semantic-embedder.js';
 export type { GraphNode, GraphEdge, GraphCluster } from './knowledge-graph.js';
 export type {
   IndexedFile,

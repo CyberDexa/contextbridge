@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name('cb')
   .description('ContextBridge — Context orchestration for AI-assisted development')
-  .version('0.1.0');
+  .version('0.1.3');
 
 // ─── Init Command ──────────────────────────────────────────
 
@@ -23,12 +23,15 @@ program
   .description('Initialize ContextBridge by indexing the current repository')
   .option('-w, --watch', 'Watch for file changes and re-index automatically')
   .option('--tree-sitter', 'Use tree-sitter parsers for Python, Go, and Rust (more precise)')
+  .option('--semantic', 'Generate vector embeddings for semantic search (requires @xenova/transformers)')
   .action(async (options) => {
     const repoDir = process.cwd();
     const useTreeSitter = options.treeSitter || false;
+    const useSemantic = options.semantic || false;
 
-    if (useTreeSitter) {
-      console.log(chalk.blue('🔍 ContextBridge — Indexing repository (tree-sitter mode)...'));
+    const modeLabel = [useTreeSitter && 'tree-sitter', useSemantic && 'semantic'].filter(Boolean).join(', ');
+    if (modeLabel) {
+      console.log(chalk.blue(`🔍 ContextBridge — Indexing repository (${modeLabel})...`));
     } else {
       console.log(chalk.blue('🔍 ContextBridge — Indexing repository...'));
     }
@@ -51,7 +54,11 @@ program
       }
     }
 
-    const progress = await bridge.index({ watch: options.watch, useTreeSitter });
+    if (useSemantic) {
+      console.log(chalk.gray('  Loading embedding model (first run downloads ~22 MB)...'));
+    }
+
+    const progress = await bridge.index({ watch: options.watch, useTreeSitter, semantic: useSemantic })
 
     console.log(chalk.green(`\n✅ Done!`));
     console.log(`  ${chalk.yellow(progress.total)} files found`);
@@ -101,7 +108,7 @@ program
     const bridge = new ContextBridge({ repoDir });
     bridge.initialize();
 
-    const result = bridge.getContext({ query, format: options.format as 'prompt' | 'structured' | 'minimal' });
+    const result = await bridge.getContext({ query, format: options.format as 'prompt' | 'structured' | 'minimal' });
 
     if (options.format === 'minimal') {
       console.log(result.summary);
@@ -160,7 +167,7 @@ program
         if (query.toLowerCase() === 'exit' || query.toLowerCase() === 'quit') break;
         if (!query.trim()) continue;
 
-        const result = bridge.getContext({ query });
+        const result = await bridge.getContext({ query });
 
         console.log(chalk.bold('\n📋 Context Package\n'));
         console.log(result.summary);

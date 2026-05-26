@@ -24,6 +24,7 @@ It parses your code (not just greps it) and builds a local knowledge base:
 
 ```
 cb init            # parse your whole repo → SQLite index in .contextbridge/
+cb init --semantic # also generate vector embeddings (needs @xenova/transformers)
 cb context "..."   # retrieve the most relevant functions/classes for a task
 cb conventions     # detect your codebase's naming, structure, and testing patterns
 cb architecture    # map module boundaries and identify architectural patterns
@@ -245,11 +246,11 @@ bridge.close();
 
 ## How it works
 
-ContextBridge does not use embeddings or LLMs. Everything is local:
+ContextBridge does not use embeddings or LLMs by default. Everything is local:
 
 1. **Parse** — TypeScript/JavaScript via the TS Compiler API. Python, Go, and Rust via regex-based parsers (+ optional tree-sitter for precise AST on Node 18–22).
 2. **Store** — Functions, classes, types, and relationships are written to a local SQLite database in `.contextbridge/`.
-3. **Retrieve** — Keyword scoring against names, signatures, and doc comments, boosted by structural signals (exports, complexity, relationships).
+3. **Retrieve** — Keyword scoring against names, signatures, and doc comments, boosted by structural signals (exports, complexity, relationships). With `cb init --semantic`, also generates 384-dim vector embeddings (via [`@xenova/transformers`](https://github.com/xenova/transformers.js) + `all-MiniLM-L6-v2`, ~22 MB download, stored locally) — `cb context` then uses hybrid keyword + vector scoring automatically.
 4. **Serve** — MCP tools and CLI commands query the same database.
 
 The `.contextbridge/` directory should be added to `.gitignore`.
@@ -297,9 +298,9 @@ contextbridge/
 - Incremental indexing (content-hash based)
 - File watching (`cb init --watch`)
 - Schema versioning with auto-migration
+- Vector embeddings for semantic retrieval (hybrid keyword + vector scoring, local, no API key)
 
 ### Planned
-- Vector embeddings for semantic retrieval (complement keyword scoring)
 - Cloud sync for team-shared indexes
 - VS Code extension
 - JetBrains plugin

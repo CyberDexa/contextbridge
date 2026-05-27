@@ -301,10 +301,10 @@ contextbridge/
 - File watching (`cb init --watch`)
 - Schema versioning with auto-migration
 - Vector embeddings for semantic retrieval (hybrid keyword + vector scoring, local, no API key)
+- VS Code extension (index, query, conventions, architecture — via command palette)
 
 ### Planned
 - Cloud sync for team-shared indexes
-- VS Code extension
 - JetBrains plugin
 - GitHub Actions integration
 

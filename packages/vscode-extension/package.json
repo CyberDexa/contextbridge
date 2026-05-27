@@ -1,0 +1,119 @@
+{
+  "name": "contextbridge",
+  "displayName": "ContextBridge",
+  "description": "Give your AI coding tools a structural map of your codebase — index, query, and explore your code via CLI or MCP",
+  "version": "0.1.0",
+  "publisher": "cyberdexa",
+  "license": "MIT",
+  "homepage": "https://github.com/CyberDexa/contextbridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CyberDexa/contextbridge.git",
+    "directory": "packages/vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/CyberDexa/contextbridge/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "AI"],
+  "keywords": ["contextbridge", "ai", "cursor", "copilot", "claude", "mcp", "context", "codebase"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "contextbridge.init",
+        "title": "ContextBridge: Index Repository",
+        "category": "ContextBridge"
+      },
+      {
+        "command": "contextbridge.initSemantic",
+        "title": "ContextBridge: Index Repository (with Semantic Search)",
+        "category": "ContextBridge"
+      },
+      {
+        "command": "contextbridge.getContext",
+        "title": "ContextBridge: Get Context",
+        "category": "ContextBridge"
+      },
+      {
+        "command": "contextbridge.getContextForSelection",
+        "title": "ContextBridge: Get Context for Selection",
+        "category": "ContextBridge"
+      },
+      {
+        "command": "contextbridge.getFileContext",
+        "title": "ContextBridge: Get File Context",
+        "category": "ContextBridge"
+      },
+      {
+        "command": "contextbridge.showConventions",
+        "title": "ContextBridge: Show Conventions",
+        "category": "ContextBridge"
+      },
+      {
+        "command": "contextbridge.showArchitecture",
+        "title": "ContextBridge: Show Architecture",
+        "category": "ContextBridge"
+      },
+      {
+        "command": "contextbridge.showStatus",
+        "title": "ContextBridge: Show Status",
+        "category": "ContextBridge"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "contextbridge.getContextForSelection",
+          "when": "editorHasSelection",
+          "group": "contextbridge"
+        },
+        {
+          "command": "contextbridge.getFileContext",
+          "group": "contextbridge"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "contextbridge.getContext",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "editorFocus"
+      }
+    ],
+    "configuration": {
+      "title": "ContextBridge",
+      "properties": {
+        "contextbridge.repoDir": {
+          "type": "string",
+          "default": "",
+          "description": "Override the repository directory to index/query. Defaults to the workspace root."
+        },
+        "contextbridge.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the cb executable. Leave empty to use cb from PATH or npx @cyberdexa/contextbridge-cli."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/bundle.mjs",
+    "watch": "node scripts/bundle.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "node scripts/bundle.mjs",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.8.0"
+  }
+}

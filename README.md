@@ -104,9 +104,10 @@ The output is token-efficient and structured — ready to paste directly into an
 ### Understand what changed
 
 ```bash
-cb what-changed           # vs last commit
+cb what-changed           # vs last 7 days
 cb what-changed --since HEAD~5
 cb what-changed --since "2 days ago"
+cb what-changed --days 30
 ```
 
 Produces a context package for only the changed code — useful for generating PR descriptions or telling an AI what's new.

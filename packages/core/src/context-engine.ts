@@ -25,6 +25,8 @@ export class ContextEngine {
 
     // Normalize query
     const queryStr = this.normalizeQuery(query.query);
+    // Expand natural-language terms to coding-specific synonyms, then re-join
+    const expandedQueryStr = this.expandQueryTerms(queryStr);
     const maxTokens = query.maxTokens || 4000;
     let totalTokens = 0;
 
@@ -34,8 +36,8 @@ export class ContextEngine {
       this.embedder?.isAvailable &&
       this.storage.hasEmbeddings();
 
-    // 1. Keyword search for functions
-    let functions = this.storage.searchFunctions(queryStr, useSemantic ? 8 : 10);
+    // 1. Keyword search for functions (use expanded query for better NL coverage)
+    let functions = this.storage.searchFunctions(expandedQueryStr, useSemantic ? 8 : 10);
 
     // 1b. Semantic search — embed the query and find nearest neighbours by cosine similarity
     if (useSemantic && this.embedder) {
@@ -47,13 +49,13 @@ export class ContextEngine {
 
     if (functions.length > 0) {
       entitiesFound.push(...functions.map((f) => f.fullName));
-      const section = this.buildFunctionSection(functions, queryStr);
+      const section = this.buildFunctionSection(functions, expandedQueryStr);
       totalTokens += this.estimateTokens(section.content);
       if (totalTokens <= maxTokens) sections.push(section);
     }
 
-    // 2. Search for matching files
-    const files = this.storage.searchFiles(queryStr, 10);
+    // 2. Search for matching files (use expanded query for better NL coverage)
+    const files = this.storage.searchFiles(expandedQueryStr, 10);
     if (files.length > 0) {
       entitiesFound.push(...files.map((f) => f.path));
       const section = this.buildFileSection(files);
@@ -359,6 +361,49 @@ export class ContextEngine {
       .replace(/[^\w\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  /**
+   * Expand natural-language query terms to coding-specific synonyms.
+   * e.g. "authentication" → "authentication auth login session jwt token"
+   * The expanded string is still space-separated and passed to searchFunctions/searchFiles,
+   * which split on whitespace and run OR LIKE for each token.
+   */
+  private expandQueryTerms(query: string): string {
+    // Map of natural-language words → code-level synonyms to append
+    const EXPANSIONS: Record<string, string[]> = {
+      authentication: ['auth', 'login', 'session', 'jwt', 'token', 'credential', 'signin', 'signout'],
+      authorize:      ['auth', 'permission', 'role', 'access', 'policy', 'guard', 'acl'],
+      authorization:  ['auth', 'permission', 'role', 'access', 'policy', 'guard', 'acl'],
+      database:       ['db', 'query', 'storage', 'sql', 'schema', 'drizzle', 'prisma', 'orm', 'repository'],
+      payment:        ['payment', 'billing', 'stripe', 'invoice', 'checkout', 'subscription', 'charge'],
+      transaction:    ['transaction', 'tx', 'payment', 'transfer', 'ledger'],
+      configuration:  ['config', 'settings', 'env', 'environment', 'options'],
+      validation:     ['validate', 'schema', 'zod', 'yup', 'check', 'guard'],
+      error:          ['error', 'exception', 'catch', 'throw', 'fail', 'handler'],
+      testing:        ['test', 'spec', 'mock', 'fixture', 'describe', 'it'],
+      routing:        ['route', 'router', 'path', 'handler', 'endpoint', 'controller'],
+      middleware:     ['middleware', 'interceptor', 'handler', 'guard', 'pipe'],
+      notification:   ['notify', 'notification', 'alert', 'email', 'push', 'webhook'],
+      upload:         ['upload', 'file', 'storage', 'blob', 'multipart', 'stream'],
+      caching:        ['cache', 'redis', 'memo', 'memoize', 'ttl', 'store'],
+      logging:        ['log', 'logger', 'console', 'trace', 'debug', 'audit'],
+      scheduling:     ['schedule', 'cron', 'job', 'task', 'queue', 'worker'],
+      search:         ['search', 'query', 'filter', 'find', 'index', 'fts'],
+    };
+
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const extra: string[] = [];
+    for (const word of words) {
+      const expansions = EXPANSIONS[word];
+      if (expansions) {
+        // Only add synonyms not already present in the query
+        for (const syn of expansions) {
+          if (!query.includes(syn)) extra.push(syn);
+        }
+      }
+    }
+    return extra.length > 0 ? `${query} ${extra.join(' ')}` : query;
   }
 
   private calculateMatchScore(fn: IndexedFunction, query: string): number {

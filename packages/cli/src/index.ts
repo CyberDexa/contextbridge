@@ -201,6 +201,7 @@ program
   .description('Show recent git changes with context from the index')
   .option('-d, --days <days>', 'Number of days to look back', '7')
   .option('-n, --count <count>', 'Number of commits to show', '10')
+  .option('-s, --since <ref>', 'Git ref or date, e.g. HEAD~5 or "2 days ago"')
   .action(async (options) => {
     const repoDir = process.cwd();
     // Sanitize: enforce integer bounds to prevent shell injection
@@ -220,18 +221,34 @@ program
       process.exit(1);
     }
 
-    console.log(chalk.blue(`\n📜 Recent Changes (last ${days} days)\n`));
+    // Determine log args based on --since flag vs --days
+    // A git ref contains ~, ^, @, or is all hex — use <ref>..HEAD range.
+    // Otherwise treat as a date string and pass as --since="<value>".
+    let logArgs: string[];
+    let label: string;
+    if (options.since) {
+      const ref = options.since as string;
+      const isGitRef = /[~^@]|^[0-9a-f]{7,40}$/i.test(ref) || /^HEAD/i.test(ref);
+      if (isGitRef) {
+        logArgs = ['log', '--oneline', `${ref}..HEAD`, `--max-count=${count}`];
+        label = `since ${ref}`;
+      } else {
+        logArgs = ['log', '--oneline', `--since=${ref}`, `--max-count=${count}`];
+        label = `since "${ref}"`;
+      }
+    } else {
+      logArgs = ['log', '--oneline', `--since=${days}.days.ago`, `--max-count=${count}`];
+      label = `last ${days} days`;
+    }
+
+    console.log(chalk.blue(`\n📜 Recent Changes (${label})\n`));
 
     // Use spawnSync with arg arrays — no shell interpolation
-    const logResult = spawnSync('git', [
-      'log', '--oneline',
-      `--since=${days}.days.ago`,
-      `--max-count=${count}`,
-    ], { encoding: 'utf-8' });
+    const logResult = spawnSync('git', logArgs, { encoding: 'utf-8' });
     const logOutput = (logResult.stdout || '').trim();
 
     if (!logOutput) {
-      console.log(chalk.yellow('  No changes found in the last ' + days + ' days.'));
+      console.log(chalk.yellow(`  No changes found (${label}).`));
       return;
     }
 

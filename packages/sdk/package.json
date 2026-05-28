@@ -1,7 +1,6 @@
 {
   "name": "@contextbridge/sdk",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,5 +23,6 @@
   "devDependencies": {
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"
-  }
+  },
+  "private": true
 }

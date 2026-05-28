@@ -238,8 +238,9 @@ export class ContextBridge {
               totalClusters: graph.findClusters().length,
             },
           };
+          const body = JSON.stringify(data);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(data));
+          res.end(body);
           return;
         }
 
@@ -247,8 +248,7 @@ export class ContextBridge {
           const stats = bridge.storage.getStats();
           const graph = new KnowledgeGraph(bridge.storage);
           const graphStats = graph.getStats();
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
+          const body = JSON.stringify({
             ...stats,
             graph: {
               nodes: graphStats.nodeCount,
@@ -256,28 +256,31 @@ export class ContextBridge {
               clusters: graph.findClusters().length,
               averageDegree: graphStats.averageDegree,
             },
-          }));
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(body);
           return;
         }
 
         if (pathname === '/api/architecture') {
-          const arch = bridge.analyzeArchitecture();
+          const body = JSON.stringify(bridge.analyzeArchitecture());
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(arch));
+          res.end(body);
           return;
         }
 
         if (pathname === '/api/conventions') {
-          const report = bridge.detectConventions();
+          const body = JSON.stringify(bridge.detectConventions());
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(report));
+          res.end(body);
           return;
         }
 
         // Health check
         if (pathname === '/api/health') {
+          const body = JSON.stringify({ status: 'ok', repo: bridge.config.repoDir });
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ status: 'ok', repo: bridge.config.repoDir }));
+          res.end(body);
           return;
         }
 
@@ -285,8 +288,10 @@ export class ContextBridge {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(getDashboardHtml());
       } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
       }
     });
 

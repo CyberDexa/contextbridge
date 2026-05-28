@@ -1,6 +1,6 @@
 {
   "name": "getcontextbridge",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Give your AI coding tools a structural map of your codebase — install alias for @cyberdexa/contextbridge-cli",
   "keywords": [
     "contextbridge",
@@ -29,6 +29,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@cyberdexa/contextbridge-cli": "^0.1.5"
+    "@cyberdexa/contextbridge-cli": "^0.1.6"
   }
 }

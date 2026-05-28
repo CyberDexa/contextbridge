@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name('cb')
   .description('ContextBridge — Context orchestration for AI-assisted development')
-  .version('0.1.3');
+  .version('0.1.6');
 
 // ─── Init Command ──────────────────────────────────────────
 
